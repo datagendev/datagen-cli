@@ -29,3 +29,12 @@ Thumbs.db
 # Generated projects (for testing)
 test-project/
 example-output/
+app/
+.claude/
+datagen.toml
+.env.example
+.env
+Dockerfile
+Procfile
+railway.json
+requirements.txt
