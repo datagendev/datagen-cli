@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/datagendev/datagen-cli/internal/config"
@@ -11,6 +12,13 @@ import (
 
 //go:embed templates/*
 var templatesFS embed.FS
+
+// Template helper functions
+var templateFuncs = template.FuncMap{
+	"lower": strings.ToLower,
+	"upper": strings.ToUpper,
+	"replace": strings.ReplaceAll,
+}
 
 // GenerateProject creates the full project structure
 func GenerateProject(cfg *config.DatagenConfig) error {
@@ -76,7 +84,7 @@ func GenerateProject(cfg *config.DatagenConfig) error {
 }
 
 func generateMainPy(cfg *config.DatagenConfig) error {
-	tmpl, err := template.ParseFS(templatesFS, "templates/main.py.tmpl")
+	tmpl, err := template.New("main.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/main.py.tmpl")
 	if err != nil {
 		return err
 	}
@@ -258,7 +266,7 @@ func generateAgentPy(cfg *config.DatagenConfig) error {
 }
 
 func generateConfigPy(cfg *config.DatagenConfig) error {
-	tmpl, err := template.ParseFS(templatesFS, "templates/config.py.tmpl")
+	tmpl, err := template.New("config.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/config.py.tmpl")
 	if err != nil {
 		return err
 	}
@@ -273,7 +281,7 @@ func generateConfigPy(cfg *config.DatagenConfig) error {
 }
 
 func generateModelsPy(cfg *config.DatagenConfig) error {
-	tmpl, err := template.ParseFS(templatesFS, "templates/models.py.tmpl")
+	tmpl, err := template.New("models.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/models.py.tmpl")
 	if err != nil {
 		return err
 	}
