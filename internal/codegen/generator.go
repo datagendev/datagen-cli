@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -15,18 +16,23 @@ var templatesFS embed.FS
 
 // Template helper functions
 var templateFuncs = template.FuncMap{
-	"lower": strings.ToLower,
-	"upper": strings.ToUpper,
+	"lower":   strings.ToLower,
+	"upper":   strings.ToUpper,
 	"replace": strings.ReplaceAll,
 }
 
 // GenerateProject creates the full project structure
-func GenerateProject(cfg *config.DatagenConfig) error {
-	// Create directories
+func GenerateProject(cfg *config.DatagenConfig, outputDir string) error {
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Create subdirectories
 	dirs := []string{
-		"app",
-		".claude/agents",
-		"scripts",
+		filepath.Join(outputDir, "app"),
+		filepath.Join(outputDir, ".claude/agents"),
+		filepath.Join(outputDir, "scripts"),
 	}
 
 	for _, dir := range dirs {
@@ -36,60 +42,60 @@ func GenerateProject(cfg *config.DatagenConfig) error {
 	}
 
 	// Generate files
-	if err := generateMainPy(cfg); err != nil {
+	if err := generateMainPy(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate main.py: %w", err)
 	}
 
-	if err := generateAgentPy(cfg); err != nil {
+	if err := generateAgentPy(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate agent.py: %w", err)
 	}
 
-	if err := generateConfigPy(cfg); err != nil {
+	if err := generateConfigPy(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate config.py: %w", err)
 	}
 
-	if err := generateModelsPy(cfg); err != nil {
+	if err := generateModelsPy(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate models.py: %w", err)
 	}
 
-	if err := generateInitPy(); err != nil {
+	if err := generateInitPy(outputDir); err != nil {
 		return fmt.Errorf("failed to generate __init__.py: %w", err)
 	}
 
-	if err := generateRequirementsTxt(); err != nil {
+	if err := generateRequirementsTxt(outputDir); err != nil {
 		return fmt.Errorf("failed to generate requirements.txt: %w", err)
 	}
 
-	if err := generateDockerfile(); err != nil {
+	if err := generateDockerfile(outputDir); err != nil {
 		return fmt.Errorf("failed to generate Dockerfile: %w", err)
 	}
 
-	if err := generateEnvExample(cfg); err != nil {
+	if err := generateEnvExample(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate .env.example: %w", err)
 	}
 
-	if err := generateProcfile(); err != nil {
+	if err := generateProcfile(outputDir); err != nil {
 		return fmt.Errorf("failed to generate Procfile: %w", err)
 	}
 
-	if err := generateRailwayJSON(); err != nil {
+	if err := generateRailwayJSON(outputDir); err != nil {
 		return fmt.Errorf("failed to generate railway.json: %w", err)
 	}
 
-	if err := generateREADME(cfg); err != nil {
+	if err := generateREADME(cfg, outputDir); err != nil {
 		return fmt.Errorf("failed to generate README.md: %w", err)
 	}
 
 	return nil
 }
 
-func generateMainPy(cfg *config.DatagenConfig) error {
+func generateMainPy(cfg *config.DatagenConfig, outputDir string) error {
 	tmpl, err := template.New("main.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/main.py.tmpl")
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create("app/main.py")
+	f, err := os.Create(filepath.Join(outputDir, "app/main.py"))
 	if err != nil {
 		return err
 	}
@@ -98,7 +104,7 @@ func generateMainPy(cfg *config.DatagenConfig) error {
 	return tmpl.Execute(f, cfg)
 }
 
-func generateAgentPy(cfg *config.DatagenConfig) error {
+func generateAgentPy(cfg *config.DatagenConfig, outputDir string) error {
 	// Using raw string literal with proper escape for Python f-strings
 	content := "\"\"\"Agent loading and execution logic.\"\"\"\n\n" +
 		"import json\n" +
@@ -262,16 +268,16 @@ func generateAgentPy(cfg *config.DatagenConfig) error {
 		"    log_event(\"agent_loaded\", name=name, model=executor.model, file=str(agent_file))\n" +
 		"    return executor\n"
 
-	return os.WriteFile("app/agent.py", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "app/agent.py"), []byte(content), 0644)
 }
 
-func generateConfigPy(cfg *config.DatagenConfig) error {
+func generateConfigPy(cfg *config.DatagenConfig, outputDir string) error {
 	tmpl, err := template.New("config.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/config.py.tmpl")
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create("app/config.py")
+	f, err := os.Create(filepath.Join(outputDir, "app/config.py"))
 	if err != nil {
 		return err
 	}
@@ -280,13 +286,13 @@ func generateConfigPy(cfg *config.DatagenConfig) error {
 	return tmpl.Execute(f, cfg)
 }
 
-func generateModelsPy(cfg *config.DatagenConfig) error {
+func generateModelsPy(cfg *config.DatagenConfig, outputDir string) error {
 	tmpl, err := template.New("models.py.tmpl").Funcs(templateFuncs).ParseFS(templatesFS, "templates/models.py.tmpl")
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create("app/models.py")
+	f, err := os.Create(filepath.Join(outputDir, "app/models.py"))
 	if err != nil {
 		return err
 	}
@@ -295,13 +301,13 @@ func generateModelsPy(cfg *config.DatagenConfig) error {
 	return tmpl.Execute(f, cfg)
 }
 
-func generateInitPy() error {
+func generateInitPy(outputDir string) error {
 	content := `"""FastAPI application package."""
 `
-	return os.WriteFile("app/__init__.py", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "app/__init__.py"), []byte(content), 0644)
 }
 
-func generateRequirementsTxt() error {
+func generateRequirementsTxt(outputDir string) error {
 	content := `# FastAPI and server
 fastapi~=0.115.0
 uvicorn[standard]~=0.32.0
@@ -324,10 +330,10 @@ pydantic-settings~=2.6.0
 python-frontmatter~=1.1.0
 pyyaml~=6.0.2
 `
-	return os.WriteFile("requirements.txt", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "requirements.txt"), []byte(content), 0644)
 }
 
-func generateDockerfile() error {
+func generateDockerfile(outputDir string) error {
 	content := `# Use Python 3.13 slim image
 FROM python:3.13-slim
 
@@ -361,10 +367,10 @@ EXPOSE 8000
 # Start the application using PORT environment variable
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 `
-	return os.WriteFile("Dockerfile", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "Dockerfile"), []byte(content), 0644)
 }
 
-func generateEnvExample(cfg *config.DatagenConfig) error {
+func generateEnvExample(cfg *config.DatagenConfig, outputDir string) error {
 	content := fmt.Sprintf(`# Required
 %s=your-anthropic-api-key-here
 %s=your-datagen-api-key-here
@@ -386,16 +392,16 @@ PERMISSION_MODE=bypassPermissions
 		}
 	}
 
-	return os.WriteFile(".env.example", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, ".env.example"), []byte(content), 0644)
 }
 
-func generateProcfile() error {
+func generateProcfile(outputDir string) error {
 	content := `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 `
-	return os.WriteFile("Procfile", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "Procfile"), []byte(content), 0644)
 }
 
-func generateRailwayJSON() error {
+func generateRailwayJSON(outputDir string) error {
 	content := `{
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
@@ -409,10 +415,10 @@ func generateRailwayJSON() error {
   }
 }
 `
-	return os.WriteFile("railway.json", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "railway.json"), []byte(content), 0644)
 }
 
-func generateREADME(cfg *config.DatagenConfig) error {
+func generateREADME(cfg *config.DatagenConfig, outputDir string) error {
 	content := "# DataGen Agent Project\n\n"
 	content += "Generated by DataGen CLI\n\n"
 	content += "## Services\n\n"
@@ -450,5 +456,5 @@ func generateREADME(cfg *config.DatagenConfig) error {
 	content += "## API Documentation\n\n"
 	content += "Once running, visit http://localhost:8000/docs for interactive API documentation.\n"
 
-	return os.WriteFile("README.md", []byte(content), 0644)
+	return os.WriteFile(filepath.Join(outputDir, "README.md"), []byte(content), 0644)
 }
