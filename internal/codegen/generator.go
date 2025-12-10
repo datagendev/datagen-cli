@@ -16,9 +16,11 @@ var templatesFS embed.FS
 
 // Template helper functions
 var templateFuncs = template.FuncMap{
-	"lower":   strings.ToLower,
-	"upper":   strings.ToUpper,
-	"replace": strings.ReplaceAll,
+	"lower": strings.ToLower,
+	"upper": strings.ToUpper,
+	"replace": func(old, new, s string) string {
+		return strings.ReplaceAll(s, old, new)
+	},
 }
 
 // GenerateProject creates the full project structure
