@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,7 +20,9 @@ func LoadConfig(path string) (*DatagenConfig, error) {
 		return nil, fmt.Errorf("failed to parse TOML: %w", err)
 	}
 
-	if err := ValidateConfig(&config); err != nil {
+	// Get config directory for resolving relative paths
+	configDir := filepath.Dir(path)
+	if err := ValidateConfig(&config, configDir); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 

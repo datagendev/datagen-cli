@@ -3,11 +3,12 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 // ValidateConfig checks if the configuration is valid
-func ValidateConfig(cfg *DatagenConfig) error {
+func ValidateConfig(cfg *DatagenConfig, configDir string) error {
 	// Check required API key env vars
 	if cfg.DatagenAPIKeyEnv == "" {
 		return fmt.Errorf("datagen_api_key_env is required")
@@ -23,7 +24,7 @@ func ValidateConfig(cfg *DatagenConfig) error {
 
 	// Validate each service
 	for i, svc := range cfg.Services {
-		if err := validateService(&svc, i); err != nil {
+		if err := validateService(&svc, i, configDir); err != nil {
 			return fmt.Errorf("service[%d] (%s): %w", i, svc.Name, err)
 		}
 	}
@@ -31,7 +32,7 @@ func ValidateConfig(cfg *DatagenConfig) error {
 	return nil
 }
 
-func validateService(svc *Service, index int) error {
+func validateService(svc *Service, index int, configDir string) error {
 	// Check required fields
 	if svc.Name == "" {
 		return fmt.Errorf("name is required")
@@ -52,8 +53,12 @@ func validateService(svc *Service, index int) error {
 		return fmt.Errorf("invalid type '%s', must be one of: webhook, api, streaming", svc.Type)
 	}
 
-	// Check that prompt file exists
-	if _, err := os.Stat(svc.Prompt); os.IsNotExist(err) {
+	// Check that prompt file exists (resolve relative to config directory)
+	promptPath := svc.Prompt
+	if !filepath.IsAbs(promptPath) {
+		promptPath = filepath.Join(configDir, promptPath)
+	}
+	if _, err := os.Stat(promptPath); os.IsNotExist(err) {
 		return fmt.Errorf("prompt file not found: %s", svc.Prompt)
 	}
 
@@ -97,10 +102,7 @@ func validateService(svc *Service, index int) error {
 		}
 	}
 
-	// Validate input schema
-	if len(svc.InputSchema.Fields) == 0 {
-		return fmt.Errorf("input_schema must have at least one field")
-	}
+	// Validate input schema fields (if any)
 	for _, field := range svc.InputSchema.Fields {
 		if err := validateField(&field); err != nil {
 			return fmt.Errorf("input_schema field '%s': %w", field.Name, err)
