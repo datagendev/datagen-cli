@@ -1,0 +1,24 @@
+"""Pydantic models for request/response schemas."""
+
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+{{range .Services}}
+# Models for {{.Name}} service
+class {{.GetInputModelName}}(BaseModel):
+    """Input model for {{.Name}} endpoint."""
+    {{range .InputSchema.Fields}}
+    {{.Name}}: {{if eq .Type "str"}}str{{else if eq .Type "int"}}int{{else if eq .Type "float"}}float{{else if eq .Type "bool"}}bool{{else if eq .Type "list"}}List[Any]{{else if eq .Type "dict"}}Dict[str, Any]{{else}}Any{{end}}{{if not .Required}} | None = None{{end}}{{if .Default}} = "{{.Default}}"{{end}}
+    {{end}}
+
+{{if .OutputSchema}}
+class {{.GetOutputModelName}}(BaseModel):
+    """Output model for {{.Name}} endpoint."""
+    {{range .OutputSchema.Fields}}
+    {{.Name}}: {{if eq .Type "str"}}str{{else if eq .Type "int"}}int{{else if eq .Type "float"}}float{{else if eq .Type "bool"}}bool{{else if eq .Type "list"}}List[Any]{{else if eq .Type "dict"}}Dict[str, Any]{{else}}Any{{end}}{{if not .Required}} | None = None{{end}}{{if .Default}} = "{{.Default}}"{{end}}
+    {{end}}
+{{end}}
+
+{{end}}

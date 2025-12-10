@@ -1,0 +1,31 @@
+# Binaries
+datagen
+datagen-*
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+*.log
+
+# Generated projects (for testing)
+test-project/
+example-output/

@@ -1,0 +1,82 @@
+"""Configuration management using Pydantic Settings."""
+
+import os
+from typing import Optional
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # Required API keys
+    {{.ClaudeAPIKeyEnv | lower}}: str = Field(
+        ..., description="Anthropic API key for Claude agent execution"
+    )
+    {{.DatagenAPIKeyEnv | lower}}: str = Field(
+        ..., description="DataGen API key for MCP integration"
+    )
+
+    # Service-specific secrets
+    {{range .Services}}
+    {{if .Auth}}
+    {{.Auth.EnvVar | lower}}: Optional[str] = Field(
+        default=None, description="Auth secret for {{.Name}} service"
+    )
+    {{end}}
+    {{if and .Webhook .Webhook.SecretEnv}}
+    {{.Webhook.SecretEnv | lower}}: Optional[str] = Field(
+        default=None, description="HMAC secret for {{.Name}} webhook"
+    )
+    {{end}}
+    {{end}}
+
+    # Model configuration (optional)
+    model_name: str = Field(
+        default="claude-sonnet-4-5",
+        description="Claude model to use",
+    )
+
+    # Application settings
+    log_level: str = Field(default="INFO", description="Logging level")
+    port: int = Field(default=8000, description="Server port")
+    permission_mode: str = Field(
+        default="bypassPermissions",
+        description="Agent SDK permission mode",
+    )
+
+    # CORS settings (optional)
+    cors_enabled: bool = Field(
+        default=False, description="Enable CORS middleware"
+    )
+    cors_origins: str = Field(
+        default="*", description="Comma-separated list of allowed CORS origins"
+    )
+
+    @field_validator("{{.ClaudeAPIKeyEnv | lower}}")
+    @classmethod
+    def validate_anthropic_key(cls, v: str) -> str:
+        """Ensure Anthropic API key is set."""
+        if not v or not v.strip():
+            raise ValueError("{{.ClaudeAPIKeyEnv}} is required")
+        return v.strip()
+
+    @field_validator("{{.DatagenAPIKeyEnv | lower}}")
+    @classmethod
+    def validate_datagen_key(cls, v: str) -> str:
+        """Ensure DataGen API key is set."""
+        if not v or not v.strip():
+            raise ValueError("{{.DatagenAPIKeyEnv}} is required")
+        return v.strip()
+
+
+# Global settings instance
+settings = Settings()

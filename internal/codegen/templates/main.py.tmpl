@@ -1,0 +1,318 @@
+"""FastAPI application entry point."""
+
+import hashlib
+import hmac
+import logging
+import uuid
+from contextlib import asynccontextmanager
+
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from app.agent import agent_executors, load_agent, log_event
+from app.config import settings
+from app.models import *
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format="%(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan events."""
+    # Load agents for all services
+    {{range .Services}}
+    agent_executors["{{.Name}}"] = load_agent("{{.Name}}", "{{.Prompt}}")
+    {{end}}
+    log_event("app_startup")
+    yield
+    log_event("app_shutdown")
+
+
+app = FastAPI(
+    title="DataGen Agent API",
+    description="FastAPI boilerplate for deploying Claude Code agents",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS Middleware (if enabled)
+if settings.cors_enabled:
+    origins = [origin.strip() for origin in settings.cors_origins.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    log_event("cors_enabled", origins=origins)
+
+
+# Middleware: Request ID injection
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """Add unique request ID to all requests."""
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+
+    log_event(
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        client=request.client.host if request.client else None,
+    )
+
+    response = await call_next(request)
+
+    log_event(
+        "http_response",
+        request_id=request_id,
+        status_code=response.status_code,
+    )
+
+    return response
+
+
+# Middleware: Error handling
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle uncaught exceptions with structured logging."""
+    request_id = getattr(request.state, "request_id", "unknown")
+
+    log_event(
+        "http_error",
+        request_id=request_id,
+        error=str(exc),
+        error_type=type(exc).__name__,
+        path=request.url.path,
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "request_id": request_id,
+            "message": "Internal server error",
+            "detail": str(exc) if settings.log_level.upper() == "DEBUG" else None,
+        },
+    )
+
+
+{{range .Services}}
+{{if eq .Type "webhook"}}
+# Webhook endpoint: {{.Name}}
+{{if .Auth}}
+async def verify_{{.Name}}_auth({{if eq .Auth.Type "api_key"}}{{.Auth.Header | lower | replace "-" "_"}}: str | None = Header(None, alias="{{.Auth.Header}}"){{else if eq .Auth.Type "bearer_token"}}authorization: str | None = Header(None){{end}}):
+    """Verify authentication for {{.Name}} endpoint."""
+    {{if eq .Auth.Type "api_key"}}
+    expected_key = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_key:
+        return  # Auth optional if not configured
+    if {{.Auth.Header | lower | replace "-" "_"}} is None:
+        raise HTTPException(status_code=401, detail="API key required")
+    if {{.Auth.Header | lower | replace "-" "_"}} != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    {{else if eq .Auth.Type "bearer_token"}}
+    expected_token = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_token:
+        return  # Auth optional if not configured
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    token = authorization[7:]
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid bearer token")
+    {{end}}
+{{end}}
+
+{{if and .Webhook .Webhook.SignatureVerification (eq .Webhook.SignatureVerification "hmac_sha256")}}
+def verify_{{.Name}}_signature(request: Request, body: bytes):
+    """Verify HMAC signature for {{.Name}} webhook."""
+    signature = request.headers.get("{{.Webhook.SignatureHeader}}")
+    if not signature:
+        raise HTTPException(status_code=401, detail="Missing signature")
+
+    secret = getattr(settings, "{{.Webhook.SecretEnv | lower}}", None)
+    if not secret:
+        return  # Verification optional if secret not configured
+
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+{{end}}
+
+async def {{.Name}}_task(payload: {{.GetInputModelName}}, request_id: str):
+    """Background task for {{.Name}}."""
+    try:
+        executor = agent_executors["{{.Name}}"]
+        await executor.execute(payload.model_dump(), request_id)
+    except Exception as e:
+        log_event(
+            "background_task_error",
+            request_id=request_id,
+            service="{{.Name}}",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+@app.post("{{.WebhookPath}}")
+async def {{.GetFunctionName}}(
+    request: Request,
+    payload: {{.GetInputModelName}},
+    background_tasks: BackgroundTasks,
+    {{if .Auth}}_: None = Depends(verify_{{.Name}}_auth),{{end}}
+):
+    """
+    {{.Description}}
+
+    Type: Webhook (async background processing)
+    """
+    request_id = request.state.request_id
+
+    {{if and .Webhook .Webhook.SignatureVerification (eq .Webhook.SignatureVerification "hmac_sha256")}}
+    body = await request.body()
+    verify_{{.Name}}_signature(request, body)
+    {{end}}
+
+    log_event("webhook_queued", request_id=request_id, service="{{.Name}}")
+    background_tasks.add_task({{.Name}}_task, payload, request_id)
+
+    return {"status": "accepted", "request_id": request_id, "message": "Processing in background"}
+
+{{else if eq .Type "api"}}
+# API endpoint: {{.Name}}
+{{if .Auth}}
+async def verify_{{.Name}}_auth({{if eq .Auth.Type "api_key"}}{{.Auth.Header | lower | replace "-" "_"}}: str | None = Header(None, alias="{{.Auth.Header}}"){{else if eq .Auth.Type "bearer_token"}}authorization: str | None = Header(None){{end}}):
+    """Verify authentication for {{.Name}} endpoint."""
+    {{if eq .Auth.Type "api_key"}}
+    expected_key = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_key:
+        return  # Auth optional if not configured
+    if {{.Auth.Header | lower | replace "-" "_"}} is None:
+        raise HTTPException(status_code=401, detail="API key required")
+    if {{.Auth.Header | lower | replace "-" "_"}} != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    {{else if eq .Auth.Type "bearer_token"}}
+    expected_token = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_token:
+        return  # Auth optional if not configured
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    token = authorization[7:]
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid bearer token")
+    {{end}}
+{{end}}
+
+@app.post("{{.APIPath}}"{{if .OutputSchema}}, response_model={{.GetOutputModelName}}{{end}})
+async def {{.GetFunctionName}}(
+    request: Request,
+    payload: {{.GetInputModelName}},
+    {{if .Auth}}_: None = Depends(verify_{{.Name}}_auth),{{end}}
+):
+    """
+    {{.Description}}
+
+    Type: API (synchronous)
+    {{if .API}}Timeout: {{.API.Timeout}}s{{end}}
+    """
+    request_id = request.state.request_id
+
+    try:
+        executor = agent_executors["{{.Name}}"]
+        result = await executor.execute(payload.model_dump(), request_id)
+        {{if .OutputSchema}}
+        # TODO: Parse result into {{.GetOutputModelName}}
+        return {{.GetOutputModelName}}(result=result)
+        {{else}}
+        return {"status": "completed", "request_id": request_id, "result": result}
+        {{end}}
+    except Exception as e:
+        log_event("api_error", request_id=request_id, service="{{.Name}}", error=str(e))
+        raise HTTPException(status_code=500, detail="Agent execution failed")
+
+{{else if eq .Type "streaming"}}
+# Streaming endpoint: {{.Name}}
+{{if .Auth}}
+async def verify_{{.Name}}_auth({{if eq .Auth.Type "api_key"}}{{.Auth.Header | lower | replace "-" "_"}}: str | None = Header(None, alias="{{.Auth.Header}}"){{else if eq .Auth.Type "bearer_token"}}authorization: str | None = Header(None){{end}}):
+    """Verify authentication for {{.Name}} endpoint."""
+    {{if eq .Auth.Type "api_key"}}
+    expected_key = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_key:
+        return  # Auth optional if not configured
+    if {{.Auth.Header | lower | replace "-" "_"}} is None:
+        raise HTTPException(status_code=401, detail="API key required")
+    if {{.Auth.Header | lower | replace "-" "_"}} != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    {{else if eq .Auth.Type "bearer_token"}}
+    expected_token = getattr(settings, "{{.Auth.EnvVar | lower}}", None)
+    if not expected_token:
+        return  # Auth optional if not configured
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    token = authorization[7:]
+    if token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid bearer token")
+    {{end}}
+{{end}}
+
+@app.post("{{.APIPath}}")
+async def {{.GetFunctionName}}(
+    request: Request,
+    payload: {{.GetInputModelName}},
+    {{if .Auth}}_: None = Depends(verify_{{.Name}}_auth),{{end}}
+):
+    """
+    {{.Description}}
+
+    Type: Streaming (SSE)
+    """
+    request_id = request.state.request_id
+
+    async def event_generator():
+        try:
+            executor = agent_executors["{{.Name}}"]
+            async for chunk in executor.stream_execute(payload.model_dump(), request_id):
+                {{if and .Streaming (eq .Streaming.Format "json")}}
+                import json
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+                {{else}}
+                yield f"data: {chunk}\n\n"
+                {{end}}
+            yield "event: done\ndata: [DONE]\n\n"
+        except Exception as e:
+            log_event("streaming_error", request_id=request_id, service="{{.Name}}", error=str(e))
+            yield f"event: error\ndata: {str(e)}\n\n"
+
+    headers = {"X-Request-ID": request_id}
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+{{end}}
+{{end}}
+
+# Health check
+@app.get("/health")
+def health():
+    """Health check endpoint."""
+    return {
+        "status": "ok",
+        "services": [{{range $i, $svc := .Services}}{{if $i}}, {{end}}"{{$svc.Name}}"{{end}}],
+        "ready": True
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=settings.port)
