@@ -180,14 +180,29 @@ func ensureRailwayProject() error {
 	return nil
 }
 
-// deployToRailway runs the railway up command
+// deployToRailway runs the railway up command and links the service
 func deployToRailway() error {
+	// Deploy the code
 	cmd := exec.Command("railway", "up", "--detach")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("railway up failed: %w", err)
+	}
+
+	// Link the service automatically
+	// Railway creates a service after 'up', we need to link it
+	fmt.Println("\n🔗 Linking Railway service...")
+
+	linkCmd := exec.Command("railway", "service")
+	linkCmd.Stdin = os.Stdin
+	linkCmd.Stdout = os.Stdout
+	linkCmd.Stderr = os.Stderr
+
+	if err := linkCmd.Run(); err != nil {
+		// Don't fail deployment if service linking has issues
+		fmt.Println("⚠️  Could not link service automatically. You may need to run 'railway service' manually.")
 	}
 
 	return nil
