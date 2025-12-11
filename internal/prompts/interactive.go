@@ -385,17 +385,9 @@ func collectAuthConfig(svc *config.Service) error {
 
 // CollectRootConfig collects the root configuration (API keys, etc.)
 func CollectRootConfig() (string, string, error) {
-	var datagenKey, claudeKey string
-
-	if err := survey.AskOne(&survey.Input{
-		Message: "DataGen API key environment variable name:",
-		Default: "DATAGEN_API_KEY",
-	}, &datagenKey, survey.WithValidator(survey.Required)); err != nil {
-		return "", "", err
-	}
-
-	// Claude API key env - hardcoded to match Anthropic SDK convention
-	claudeKey = "ANTHROPIC_API_KEY"
+	// Use standard environment variable names
+	datagenKey := "DATAGEN_API_KEY"
+	claudeKey := "ANTHROPIC_API_KEY"
 
 	return datagenKey, claudeKey, nil
 }
