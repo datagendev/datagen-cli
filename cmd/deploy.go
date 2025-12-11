@@ -76,8 +76,24 @@ func runDeploy(cmd *cobra.Command, args []string) {
 	checkCmd := exec.Command("railway", "whoami")
 	if err := checkCmd.Run(); err != nil {
 		fmt.Println("⚠️  Not logged in to Railway")
-		fmt.Println("Run 'railway login' to authenticate")
-		os.Exit(1)
+		fmt.Println()
+
+		// Offer to run railway login
+		if !promptRailwayLogin() {
+			fmt.Println("\nPlease run 'railway login' to authenticate")
+			os.Exit(1)
+		}
+
+		// Verify login succeeded
+		checkCmd := exec.Command("railway", "whoami")
+		if err := checkCmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "\n❌ Login failed or was cancelled\n")
+			fmt.Println("Please try 'railway login' manually")
+			os.Exit(1)
+		}
+
+		fmt.Println("✅ Successfully logged in to Railway!")
+		fmt.Println()
 	}
 
 	// TODO: Implement full deployment logic
@@ -113,6 +129,39 @@ func promptInstallRailway() bool {
 
 	fmt.Println()
 	return installRailwayCLI()
+}
+
+// promptRailwayLogin asks user if they want to log in to Railway and does it
+func promptRailwayLogin() bool {
+	fmt.Println("Would you like to log in to Railway now? (y/n)")
+	fmt.Print("> ")
+
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
+		return false
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	if response != "y" && response != "yes" {
+		return false
+	}
+
+	fmt.Println()
+	fmt.Println("🔐 Opening Railway login in your browser...")
+
+	cmd := exec.Command("railway", "login")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Login command failed: %v\n", err)
+		return false
+	}
+
+	return true
 }
 
 // installRailwayCLI attempts to install Railway CLI based on the platform
