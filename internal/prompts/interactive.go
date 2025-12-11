@@ -394,12 +394,8 @@ func CollectRootConfig() (string, string, error) {
 		return "", "", err
 	}
 
-	if err := survey.AskOne(&survey.Input{
-		Message: "Claude API key environment variable name:",
-		Default: "ANTHROPIC_API_KEY",
-	}, &claudeKey, survey.WithValidator(survey.Required)); err != nil {
-		return "", "", err
-	}
+	// Claude API key env - hardcoded to match Anthropic SDK convention
+	claudeKey = "ANTHROPIC_API_KEY"
 
 	return datagenKey, claudeKey, nil
 }
