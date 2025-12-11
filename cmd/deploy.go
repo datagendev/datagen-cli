@@ -8,12 +8,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	deployOutputDir string
+)
+
 var deployCmd = &cobra.Command{
 	Use:   "deploy [platform]",
 	Short: "Deploy to cloud platform",
 	Long:  `Deploy your project to a cloud platform (currently supports: railway)`,
 	Args:  cobra.MaximumNArgs(1),
 	Run:   runDeploy,
+}
+
+func init() {
+	deployCmd.Flags().StringVarP(&deployOutputDir, "output", "o", ".", "Directory containing the project to deploy")
+	deployCmd.MarkFlagDirname("output")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) {
@@ -25,6 +34,15 @@ func runDeploy(cmd *cobra.Command, args []string) {
 	if platform != "railway" {
 		fmt.Fprintf(os.Stderr, "Error: Only 'railway' platform is currently supported\n")
 		os.Exit(1)
+	}
+
+	// Change to output directory if specified
+	if deployOutputDir != "." {
+		if err := os.Chdir(deployOutputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Cannot access directory %s: %v\n", deployOutputDir, err)
+			os.Exit(1)
+		}
+		fmt.Printf("📁 Working in directory: %s\n", deployOutputDir)
 	}
 
 	fmt.Println("🚀 Deploying to Railway...")

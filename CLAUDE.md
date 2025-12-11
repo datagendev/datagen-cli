@@ -31,6 +31,7 @@ make release
 ./datagen --help
 ./datagen start --output ./test-project
 ./datagen build --output ./output --config ./test-project/datagen.toml
+./datagen deploy railway --output ./output
 ```
 
 ## Architecture
@@ -125,8 +126,23 @@ mkdir test-project
 # Generate output in separate directory
 ./datagen build --output ./test-output --config ./test-project/datagen.toml
 
+# Deploy from separate directory
+./datagen deploy railway --output ./test-output
+
 # Source directory stays clean - no app/, .claude/, etc.
 ```
+
+### Command Flags
+
+**`datagen start`**
+- `--output`, `-o` - Directory to save datagen.toml (default: current directory)
+
+**`datagen build`**
+- `--output`, `-o` - Directory for generated files (default: current directory)
+- `--config`, `-c` - Path to datagen.toml (default: datagen.toml)
+
+**`datagen deploy [platform]`**
+- `--output`, `-o` - Directory containing project to deploy (default: current directory)
 
 ## Common Modifications
 

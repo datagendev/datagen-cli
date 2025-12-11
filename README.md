@@ -44,6 +44,15 @@ This will interactively guide you through:
 - Setting up authentication
 - Selecting allowed DataGen tools
 
+**Options:**
+- `--output`, `-o` - Directory to save the configuration file (default: current directory)
+
+**Example:**
+```bash
+# Save config to a specific directory
+datagen start --output ./my-project
+```
+
 ### 2. Build the Project
 
 After completing the interactive setup, you'll have a `datagen.toml` file. Generate the boilerplate code with:
@@ -51,6 +60,24 @@ After completing the interactive setup, you'll have a `datagen.toml` file. Gener
 ```bash
 datagen build
 ```
+
+**Options:**
+- `--output`, `-o` - Directory for generated project files (default: current directory)
+- `--config`, `-c` - Path to datagen.toml configuration file (default: datagen.toml)
+
+**Examples:**
+```bash
+# Generate in current directory
+datagen build
+
+# Generate in a specific directory
+datagen build --output ./my-project
+
+# Use config from different location
+datagen build --output ./output --config ./my-project/datagen.toml
+```
+
+**Note:** Using `--output` is recommended to avoid polluting your source directory during testing.
 
 This creates:
 ```
@@ -74,6 +101,18 @@ This creates:
 
 ```bash
 datagen deploy railway
+```
+
+**Options:**
+- `--output`, `-o` - Directory containing the project to deploy (default: current directory)
+
+**Example:**
+```bash
+# Deploy from current directory
+datagen deploy railway
+
+# Deploy from specific directory
+datagen deploy railway --output ./my-project
 ```
 
 ## Endpoint Types
