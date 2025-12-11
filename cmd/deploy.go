@@ -96,18 +96,120 @@ func runDeploy(cmd *cobra.Command, args []string) {
 		fmt.Println()
 	}
 
-	// TODO: Implement full deployment logic
-	// - Check for railway.json
-	// - Upload environment variables
-	// - Run railway up
-	// - Get domain
+	// Check for required files
+	if err := checkRequiredFiles(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
 
-	fmt.Println("\n✅ Deployment placeholder - full implementation coming soon!")
-	fmt.Println("\nManual steps:")
-	fmt.Println("  1. railway login")
-	fmt.Println("  2. railway init")
-	fmt.Println("  3. railway up --detach")
-	fmt.Println("  4. railway domain")
+	// Initialize Railway project if needed
+	if err := ensureRailwayProject(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to initialize Railway project: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Deploy the project
+	fmt.Println("🚢 Deploying to Railway...")
+	if err := deployToRailway(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Deployment failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Get the deployment URL
+	fmt.Println()
+	if err := showDeploymentInfo(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Could not retrieve deployment URL: %v\n", err)
+		fmt.Println("\nYou can get your deployment URL by running: railway domain")
+	}
+
+	fmt.Println("\n✅ Deployment successful!")
+	fmt.Println("\n📝 Next steps:")
+	fmt.Println("  1. Set environment variables: railway variables")
+	fmt.Println("  2. View logs: railway logs")
+	fmt.Println("  3. Open in browser: railway open")
+}
+
+// checkRequiredFiles verifies that all required deployment files exist
+func checkRequiredFiles() error {
+	requiredFiles := []string{"requirements.txt", "Procfile"}
+	optionalFiles := []string{"railway.json", "Dockerfile"}
+
+	fmt.Println("📋 Checking required files...")
+
+	// Check required files
+	for _, file := range requiredFiles {
+		if _, err := os.Stat(file); os.IsNotExist(err) {
+			return fmt.Errorf("required file missing: %s", file)
+		}
+		fmt.Printf("  ✓ %s\n", file)
+	}
+
+	// Check optional files
+	for _, file := range optionalFiles {
+		if _, err := os.Stat(file); err == nil {
+			fmt.Printf("  ✓ %s\n", file)
+		}
+	}
+
+	fmt.Println()
+	return nil
+}
+
+// ensureRailwayProject checks if Railway is initialized and initializes if needed
+func ensureRailwayProject() error {
+	// Check if .railway directory exists (indicates initialized project)
+	if _, err := os.Stat(".railway"); err == nil {
+		fmt.Println("✓ Railway project already initialized")
+		return nil
+	}
+
+	fmt.Println("🔧 Initializing Railway project...")
+	fmt.Println()
+
+	cmd := exec.Command("railway", "init")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("railway init failed: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Println("✓ Railway project initialized")
+	return nil
+}
+
+// deployToRailway runs the railway up command
+func deployToRailway() error {
+	cmd := exec.Command("railway", "up", "--detach")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("railway up failed: %w", err)
+	}
+
+	return nil
+}
+
+// showDeploymentInfo displays the deployment URL and other info
+func showDeploymentInfo() error {
+	fmt.Println("🌐 Getting deployment information...")
+
+	// Get the domain
+	cmd := exec.Command("railway", "domain")
+	output, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
+	domain := strings.TrimSpace(string(output))
+	if domain != "" {
+		fmt.Printf("\n🔗 Deployment URL: https://%s\n", domain)
+	}
+
+	return nil
 }
 
 // promptInstallRailway asks user if they want to install Railway CLI and does it
