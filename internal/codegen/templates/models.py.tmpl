@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+# === SERVICE MODELS START ===
 {{range .Services}}
 # Models for {{.Name}} service
 class {{.GetInputModelName}}(BaseModel):
@@ -22,3 +23,4 @@ class {{.GetOutputModelName}}(BaseModel):
 {{end}}
 
 {{end}}
+# === SERVICE MODELS END ===

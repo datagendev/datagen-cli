@@ -36,18 +36,20 @@ make release
 
 ## Architecture
 
-### Three-Phase Workflow
+### Four-Phase Workflow
 
-1. **Interactive Setup** (`datagen start`): Prompts user with Survey library, creates `datagen.toml` config
+1. **Interactive Setup** (`datagen start`): Prompts user with Survey library, creates `datagen.toml` config, auto-creates agent prompt files
 2. **Code Generation** (`datagen build`): Parses TOML config, validates, generates FastAPI project from templates
-3. **Deployment** (`datagen deploy`): Deploys generated project to Railway (or other platforms)
+3. **Incremental Updates** (`datagen add`): Adds new services to existing projects without overwriting customizations
+4. **Deployment** (`datagen deploy`): Deploys generated project to Railway (or other platforms)
 
 ### Key Components
 
 #### Command Layer (`cmd/`)
 - **root.go**: Cobra root command registration
-- **start.go**: Interactive setup flow using Survey prompts
+- **start.go**: Interactive setup flow using Survey prompts, auto-creates agent prompt files
 - **build.go**: Config loading and project generation orchestration
+- **add.go**: Incremental service addition to existing projects
 - **deploy.go**: Deployment logic (Railway integration)
 
 #### Configuration Layer (`internal/config/`)
@@ -70,9 +72,15 @@ make release
   - `GenerateProject()`: Orchestrates full project generation with outputDir parameter
   - Template functions: `lower`, `upper`, `replace(old, new, s)` - note parameter order for pipe syntax
   - All file paths use `filepath.Join(outputDir, ...)` to avoid source directory pollution
+- **incremental.go**: Incremental update logic for adding services without full regeneration
+  - `IncrementalAddService()`: Adds new service to existing project files
+  - `updateMainPy()`: Injects endpoint handlers into marked sections
+  - `updateModelsPy()`: Appends new Pydantic models
+  - `updateEnvExample()`: Adds new environment variables
+  - Uses marker comments for injection zones: `=== AGENT LOADING START ===`, `=== ENDPOINT HANDLERS START ===`, etc.
 - **templates/**: Go text/template files for FastAPI code
-  - `main.py.tmpl`: FastAPI app with all endpoints (single template handles all three types)
-  - `models.py.tmpl`: Pydantic models from schemas
+  - `main.py.tmpl`: FastAPI app with all endpoints, includes marker comments for incremental updates
+  - `models.py.tmpl`: Pydantic models from schemas, includes marker comments
   - `config.py.tmpl`: Environment variable configuration
   - Uses conditionals: `{{if eq .Type "webhook"}}...{{else if eq .Type "api"}}...{{end}}`
 
@@ -135,14 +143,58 @@ mkdir test-project
 ### Command Flags
 
 **`datagen start`**
-- `--output`, `-o` - Directory to save datagen.toml (default: current directory)
+- `--output`, `-o` - Directory to save datagen.toml and agent prompt files (default: current directory)
 
 **`datagen build`**
 - `--output`, `-o` - Directory for generated files (default: current directory)
 - `--config`, `-c` - Path to datagen.toml (default: datagen.toml)
 
+**`datagen add`**
+- `--output`, `-o` - Project directory (default: current directory)
+- `--config`, `-c` - Path to datagen.toml (default: datagen.toml)
+
 **`datagen deploy [platform]`**
 - `--output`, `-o` - Directory containing project to deploy (default: current directory)
+
+## Incremental Updates System
+
+The `datagen add` command uses a marker-based injection system to add new services without overwriting user customizations.
+
+### Marker Comments
+Generated files include special marker comments that define injection zones:
+
+**main.py:**
+```python
+# === AGENT LOADING START ===
+agent_executors["service1"] = load_agent(...)
+# === AGENT LOADING END ===
+
+# === ENDPOINT HANDLERS START ===
+@app.post("/api/endpoint1")
+async def handler1(...): ...
+# === ENDPOINT HANDLERS END ===
+```
+
+**models.py:**
+```python
+# === SERVICE MODELS START ===
+class Service1Input(BaseModel): ...
+# === SERVICE MODELS END ===
+```
+
+### How Injection Works
+1. Read existing file content
+2. Verify marker comments are present (fail if missing)
+3. Generate new service code using mini-templates
+4. Insert code before END markers using string manipulation
+5. Update health check services list
+6. Write back to file
+
+### Important Notes
+- User code outside markers is preserved
+- If markers are removed, incremental updates fail gracefully with helpful error
+- Only updates files that need changes (main.py, models.py, .env.example)
+- Does not touch: agent.py, config.py (unless service has custom settings), Dockerfile, etc.
 
 ## Common Modifications
 

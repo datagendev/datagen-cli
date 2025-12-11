@@ -16,6 +16,7 @@ for deploying Claude Code agents with DataGen MCP integration.
 Usage:
   datagen start      - Interactive project setup
   datagen build      - Generate code from datagen.toml
+  datagen add        - Add a new service to existing project
   datagen deploy     - Deploy to Railway`,
 }
 
@@ -30,5 +31,6 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(buildCmd)
+	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(deployCmd)
 }

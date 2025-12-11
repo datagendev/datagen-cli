@@ -1,114 +1,184 @@
-"""FastAPI application entry point."""
+package codegen
 
-import hashlib
-import hmac
-import logging
-import uuid
-from contextlib import asynccontextmanager
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-
-from app.agent import agent_executors, load_agent, log_event
-from app.config import settings
-from app.models import *
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(message)s",
-)
-logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    # Load agents for all services
-    # === AGENT LOADING START ===
-    {{range .Services}}
-    agent_executors["{{.Name}}"] = load_agent("{{.Name}}", "{{.Prompt}}")
-    {{end}}
-    # === AGENT LOADING END ===
-    log_event("app_startup")
-    yield
-    log_event("app_shutdown")
-
-
-app = FastAPI(
-    title="DataGen Agent API",
-    description="FastAPI boilerplate for deploying Claude Code agents",
-    version="1.0.0",
-    lifespan=lifespan,
+	"github.com/datagendev/datagen-cli/internal/config"
 )
 
-# CORS Middleware (if enabled)
-if settings.cors_enabled:
-    origins = [origin.strip() for origin in settings.cors_origins.split(",")]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    log_event("cors_enabled", origins=origins)
+// IncrementalAddService adds a new service to existing project files
+func IncrementalAddService(cfg *config.DatagenConfig, newService *config.Service, outputDir string) error {
+	// Update main.py with new endpoint
+	if err := updateMainPy(cfg, newService, outputDir); err != nil {
+		return fmt.Errorf("failed to update main.py: %w", err)
+	}
 
+	// Update models.py with new models
+	if err := updateModelsPy(newService, outputDir); err != nil {
+		return fmt.Errorf("failed to update models.py: %w", err)
+	}
 
-# Middleware: Request ID injection
-@app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    """Add unique request ID to all requests."""
-    request_id = str(uuid.uuid4())
-    request.state.request_id = request_id
+	// Update .env.example if service has auth
+	if newService.Auth != nil || (newService.Webhook != nil && newService.Webhook.SecretEnv != "") {
+		if err := updateEnvExample(newService, outputDir); err != nil {
+			return fmt.Errorf("failed to update .env.example: %w", err)
+		}
+	}
 
-    log_event(
-        "http_request",
-        request_id=request_id,
-        method=request.method,
-        path=request.url.path,
-        client=request.client.host if request.client else None,
-    )
+	return nil
+}
 
-    response = await call_next(request)
+// updateMainPy injects new endpoint handlers into main.py
+func updateMainPy(cfg *config.DatagenConfig, newService *config.Service, outputDir string) error {
+	mainPath := filepath.Join(outputDir, "app/main.py")
+	content, err := os.ReadFile(mainPath)
+	if err != nil {
+		return fmt.Errorf("failed to read main.py: %w", err)
+	}
 
-    log_event(
-        "http_response",
-        request_id=request_id,
-        status_code=response.status_code,
-    )
+	mainContent := string(content)
 
-    return response
+	// Check for markers
+	if !strings.Contains(mainContent, "=== AGENT LOADING START ===") {
+		return fmt.Errorf("missing agent loading markers in main.py - file may have been manually modified")
+	}
+	if !strings.Contains(mainContent, "=== ENDPOINT HANDLERS START ===") {
+		return fmt.Errorf("missing endpoint handlers markers in main.py - file may have been manually modified")
+	}
 
+	// 1. Add agent loading
+	agentLoadingCode := fmt.Sprintf(`    agent_executors["%s"] = load_agent("%s", "%s")`,
+		newService.Name, newService.Name, newService.Prompt)
+	mainContent = injectBeforeMarker(mainContent, "# === AGENT LOADING END ===", agentLoadingCode+"\n")
 
-# Middleware: Error handling
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions with structured logging."""
-    request_id = getattr(request.state, "request_id", "unknown")
+	// 2. Generate endpoint handler code
+	endpointCode, err := generateEndpointCode(newService)
+	if err != nil {
+		return fmt.Errorf("failed to generate endpoint code: %w", err)
+	}
 
-    log_event(
-        "http_error",
-        request_id=request_id,
-        error=str(exc),
-        error_type=type(exc).__name__,
-        path=request.url.path,
-    )
+	// 3. Inject endpoint handler before END marker
+	mainContent = injectBeforeMarker(mainContent, "# === ENDPOINT HANDLERS END ===", endpointCode+"\n")
 
-    return JSONResponse(
-        status_code=500,
-        content={
-            "status": "error",
-            "request_id": request_id,
-            "message": "Internal server error",
-            "detail": str(exc) if settings.log_level.upper() == "DEBUG" else None,
-        },
-    )
+	// 4. Update health check services list
+	mainContent = updateHealthCheckServices(mainContent, cfg)
 
+	// Write back
+	return os.WriteFile(mainPath, []byte(mainContent), 0644)
+}
 
-# === ENDPOINT HANDLERS START ===
-{{range .Services}}
+// updateModelsPy appends new models to models.py
+func updateModelsPy(newService *config.Service, outputDir string) error {
+	modelsPath := filepath.Join(outputDir, "app/models.py")
+	content, err := os.ReadFile(modelsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read models.py: %w", err)
+	}
+
+	modelsContent := string(content)
+
+	// Check for marker
+	if !strings.Contains(modelsContent, "=== SERVICE MODELS START ===") {
+		return fmt.Errorf("missing service models markers in models.py - file may have been manually modified")
+	}
+
+	// Generate model code
+	modelCode, err := generateModelCode(newService)
+	if err != nil {
+		return fmt.Errorf("failed to generate model code: %w", err)
+	}
+
+	// Inject before END marker
+	modelsContent = injectBeforeMarker(modelsContent, "# === SERVICE MODELS END ===", modelCode+"\n")
+
+	// Write back
+	return os.WriteFile(modelsPath, []byte(modelsContent), 0644)
+}
+
+// updateEnvExample appends new environment variables to .env.example
+func updateEnvExample(newService *config.Service, outputDir string) error {
+	envPath := filepath.Join(outputDir, ".env.example")
+	content, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("failed to read .env.example: %w", err)
+	}
+
+	envContent := string(content)
+	newVars := []string{}
+
+	// Add auth env vars
+	if newService.Auth != nil && newService.Auth.EnvVar != "" {
+		varName := strings.ToUpper(newService.Auth.EnvVar)
+		if !strings.Contains(envContent, varName+"=") {
+			newVars = append(newVars, fmt.Sprintf("\n# %s authentication", newService.Name))
+			newVars = append(newVars, fmt.Sprintf("%s=your_%s_key_here", varName, strings.ToLower(newService.Name)))
+		}
+	}
+
+	// Add webhook secret env vars
+	if newService.Webhook != nil && newService.Webhook.SecretEnv != "" {
+		varName := strings.ToUpper(newService.Webhook.SecretEnv)
+		if !strings.Contains(envContent, varName+"=") {
+			newVars = append(newVars, fmt.Sprintf("\n# %s webhook signature verification", newService.Name))
+			newVars = append(newVars, fmt.Sprintf("%s=your_webhook_secret_here", varName))
+		}
+	}
+
+	if len(newVars) > 0 {
+		envContent += "\n" + strings.Join(newVars, "\n") + "\n"
+		return os.WriteFile(envPath, []byte(envContent), 0644)
+	}
+
+	return nil
+}
+
+// injectBeforeMarker inserts code before a marker line
+func injectBeforeMarker(content, marker, codeToInject string) string {
+	markerIndex := strings.Index(content, marker)
+	if markerIndex == -1 {
+		return content
+	}
+
+	before := content[:markerIndex]
+	after := content[markerIndex:]
+	return before + codeToInject + after
+}
+
+// updateHealthCheckServices updates the services list in health check endpoint
+func updateHealthCheckServices(content string, cfg *config.DatagenConfig) string {
+	// Find health check section
+	healthStart := strings.Index(content, `"services": [`)
+	if healthStart == -1 {
+		return content
+	}
+
+	healthEnd := strings.Index(content[healthStart:], `],`)
+	if healthEnd == -1 {
+		return content
+	}
+
+	// Generate new services list
+	var serviceNames []string
+	for _, svc := range cfg.Services {
+		serviceNames = append(serviceNames, fmt.Sprintf(`"%s"`, svc.Name))
+	}
+	newServicesList := strings.Join(serviceNames, ", ")
+
+	// Replace
+	before := content[:healthStart]
+	after := content[healthStart+healthEnd:]
+	return before + `"services": [` + newServicesList + `]` + after
+}
+
+// generateEndpointCode generates the endpoint handler code for a single service
+func generateEndpointCode(svc *config.Service) (string, error) {
+	// Create a mini-template with just the endpoint handler
+	tmplStr := `
 {{if eq .Type "webhook"}}
 # Webhook endpoint: {{.Name}}
 {{if .Auth}}
@@ -302,21 +372,48 @@ async def {{.GetFunctionName}}(
     headers = {"X-Request-ID": request_id}
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
+{{end}}`
+
+	tmpl, err := template.New("endpoint").Funcs(templateFuncs).Parse(tmplStr)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, svc); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+// generateModelCode generates the Pydantic model code for a single service
+func generateModelCode(svc *config.Service) (string, error) {
+	tmplStr := `# Models for {{.Name}} service
+class {{.GetInputModelName}}(BaseModel):
+    """Input model for {{.Name}} endpoint."""
+    {{range .InputSchema.Fields}}
+    {{.Name}}: {{if eq .Type "str"}}str{{else if eq .Type "int"}}int{{else if eq .Type "float"}}float{{else if eq .Type "bool"}}bool{{else if eq .Type "list"}}List[Any]{{else if eq .Type "dict"}}Dict[str, Any]{{else}}Any{{end}}{{if not .Required}} | None = None{{end}}{{if .Default}} = "{{.Default}}"{{end}}
+    {{end}}
+
+{{if .OutputSchema}}
+class {{.GetOutputModelName}}(BaseModel):
+    """Output model for {{.Name}} endpoint."""
+    {{range .OutputSchema.Fields}}
+    {{.Name}}: {{if eq .Type "str"}}str{{else if eq .Type "int"}}int{{else if eq .Type "float"}}float{{else if eq .Type "bool"}}bool{{else if eq .Type "list"}}List[Any]{{else if eq .Type "dict"}}Dict[str, Any]{{else}}Any{{end}}{{if not .Required}} | None = None{{end}}{{if .Default}} = "{{.Default}}"{{end}}
+    {{end}}
 {{end}}
-{{end}}
-# === ENDPOINT HANDLERS END ===
+`
 
-# Health check
-@app.get("/health")
-def health():
-    """Health check endpoint."""
-    return {
-        "status": "ok",
-        "services": [{{range $i, $svc := .Services}}{{if $i}}, {{end}}"{{$svc.Name}}"{{end}}],
-        "ready": True
-    }
+	tmpl, err := template.New("models").Funcs(templateFuncs).Parse(tmplStr)
+	if err != nil {
+		return "", err
+	}
 
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, svc); err != nil {
+		return "", err
+	}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=settings.port)
+	return buf.String(), nil
+}

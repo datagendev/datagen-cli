@@ -97,7 +97,45 @@ This creates:
 └── README.md
 ```
 
-### 3. Deploy to Railway
+### 3. Add a New Service (Optional)
+
+After your project is built and running, you can add new services without losing your customizations:
+
+```bash
+datagen add
+```
+
+This will:
+- Interactively collect the new service configuration
+- Update `datagen.toml` with the new service
+- Create the agent prompt file
+- **Incrementally inject** new code into existing files (preserves your customizations!)
+
+**Options:**
+- `--output`, `-o` - Project directory (default: current directory)
+- `--config`, `-c` - Path to datagen.toml (default: datagen.toml)
+
+**Examples:**
+```bash
+# Add service to current directory project
+datagen add
+
+# Add service to specific project
+datagen add --output ./my-project --config ./my-project/datagen.toml
+```
+
+**How it works:**
+- Reads existing `datagen.toml`
+- Prompts for new service details
+- Adds service to config and saves
+- Creates agent prompt file in `.claude/agents/`
+- **Injects new code** into marked sections of `app/main.py` and `app/models.py`
+- Updates `.env.example` with new environment variables
+- **Preserves all your custom code** outside the marked injection zones
+
+**Important:** The `datagen add` command uses special marker comments in the generated files. If you remove these markers, the command will fail and you'll need to manually add the new service or use `datagen build` to fully regenerate (which will overwrite customizations).
+
+### 4. Deploy to Railway
 
 ```bash
 datagen deploy railway
