@@ -54,7 +54,7 @@ func updateMainPy(cfg *config.DatagenConfig, newService *config.Service, outputD
 	// 1. Add agent loading
 	agentLoadingCode := fmt.Sprintf(`    agent_executors["%s"] = load_agent("%s", "%s")`,
 		newService.Name, newService.Name, newService.Prompt)
-	mainContent = injectBeforeMarker(mainContent, "# === AGENT LOADING END ===", agentLoadingCode+"\n")
+	mainContent = injectBeforeMarker(mainContent, "    # === AGENT LOADING END ===", agentLoadingCode+"\n")
 
 	// 2. Generate endpoint handler code
 	endpointCode, err := generateEndpointCode(newService)
@@ -171,8 +171,8 @@ func updateHealthCheckServices(content string, cfg *config.DatagenConfig) string
 
 	// Replace
 	before := content[:healthStart]
-	after := content[healthStart+healthEnd:]
-	return before + `"services": [` + newServicesList + `]` + after
+	after := content[healthStart+healthEnd+2:] // +2 to skip past the "],"
+	return before + `"services": [` + newServicesList + `],` + after
 }
 
 // generateEndpointCode generates the endpoint handler code for a single service
