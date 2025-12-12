@@ -54,7 +54,12 @@ func updateMainPy(cfg *config.DatagenConfig, newService *config.Service, outputD
 	// 1. Add agent loading
 	agentLoadingCode := fmt.Sprintf(`    agent_executors["%s"] = load_agent("%s", "%s")`,
 		newService.Name, newService.Name, newService.Prompt)
-	mainContent = injectBeforeMarker(mainContent, "    # === AGENT LOADING END ===", agentLoadingCode+"\n")
+	// Try with indentation first (newer templates), fall back to without (older files)
+	marker := "    # === AGENT LOADING END ==="
+	if !strings.Contains(mainContent, marker) {
+		marker = "# === AGENT LOADING END ===" // Fallback for older generated files
+	}
+	mainContent = injectBeforeMarker(mainContent, marker, agentLoadingCode+"\n")
 
 	// 2. Generate endpoint handler code
 	endpointCode, err := generateEndpointCode(newService)
