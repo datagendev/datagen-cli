@@ -51,8 +51,9 @@ func runBuild(cmd *cobra.Command, args []string) {
 	fmt.Printf("\n✅ Project generated successfully in %s\n", absPath)
 	fmt.Println("\n📝 Next steps:")
 	fmt.Printf("  1. cd %s\n", buildOutputDir)
-	fmt.Println("  2. Review the generated code in app/")
-	fmt.Println("  3. Set up your .env file (see .env.example)")
-	fmt.Println("  4. Test locally: uvicorn app.main:app --reload")
-	fmt.Println("  5. Deploy: datagen deploy railway")
+	fmt.Println("  2. python -m venv venv && source venv/bin/activate")
+	fmt.Println("  3. pip install -r requirements.txt")
+	fmt.Println("  4. cp .env.example .env (and add your API keys)")
+	fmt.Println("  5. uvicorn app.main:app --reload")
+	fmt.Println("  6. Deploy: datagen deploy railway")
 }
