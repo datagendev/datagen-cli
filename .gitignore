@@ -10,6 +10,8 @@ datagen-*
 *.dylib
 *.test
 *.out
+.gocache/
+.gomodcache/
 go.work
 
 # IDE

@@ -27,7 +27,8 @@ func init() {
 
 func runStart(cmd *cobra.Command, args []string) {
 	fmt.Println("🚀 Welcome to DataGen CLI!")
-	fmt.Println("Let's set up your agent project.\n")
+	fmt.Println("Let's set up your agent project.")
+	fmt.Println()
 
 	// Create output directory if it doesn't exist
 	if err := os.MkdirAll(startOutputDir, 0755); err != nil {

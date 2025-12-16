@@ -13,6 +13,24 @@ A command-line tool for generating production-ready FastAPI boilerplate for depl
 
 ## Installation
 
+### One-line (macOS/Linux)
+
+```bash
+curl -fsSL https://cli.datagen.dev/install.sh | sh
+```
+
+Mirror:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/datagendev/datagen-cli/main/install.sh | sh
+```
+
+Installs the latest release to `/usr/local/bin` if writable, otherwise to `~/.local/bin`.
+
+**Optional env vars:**
+- `DATAGEN_VERSION` (example: `v0.1.0`)
+- `DATAGEN_INSTALL_DIR` (example: `/usr/local/bin`)
+
 ### From Source
 
 ```bash
