@@ -19,6 +19,12 @@ A command-line tool for generating production-ready FastAPI boilerplate for depl
 curl -fsSL https://cli.datagen.dev/install.sh | sh
 ```
 
+Verify:
+
+```bash
+datagen --help
+```
+
 Mirror:
 
 ```bash
@@ -27,9 +33,29 @@ curl -fsSL https://raw.githubusercontent.com/datagendev/datagen-cli/main/install
 
 Installs the latest release to `/usr/local/bin` if writable, otherwise to `~/.local/bin`.
 
+If it installs to `~/.local/bin`, make sure it’s on your `PATH`:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
 **Optional env vars:**
-- `DATAGEN_VERSION` (example: `v0.1.0`)
+- `DATAGEN_VERSION` (example: `v0.1.1` to pin a specific release)
 - `DATAGEN_INSTALL_DIR` (example: `/usr/local/bin`)
+
+Examples:
+
+```bash
+# Pin a specific version
+curl -fsSL https://cli.datagen.dev/install.sh | env DATAGEN_VERSION=v0.1.1 sh
+
+# Install to a custom directory
+curl -fsSL https://cli.datagen.dev/install.sh | env DATAGEN_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+**Checksums (optional):**
+- Download `checksums.txt` from the same GitHub Release and run: `shasum -a 256 -c checksums.txt`
 
 ### From Source
 
@@ -43,7 +69,7 @@ sudo mv datagen /usr/local/bin/
 ### Quick Test
 
 ```bash
-./datagen --help
+datagen --help
 ```
 
 ## Usage

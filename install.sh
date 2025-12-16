@@ -117,7 +117,7 @@ main() {
   if ! is_in_path "$install_dir"; then
     say ""
     say "Add it to your PATH (example):"
-    say "  echo 'export PATH=\"${install_dir}:\\$PATH\"' >> ~/.zshrc"
+    say "  echo 'export PATH=\"${install_dir}:\$PATH\"' >> ~/.zshrc"
     say "  source ~/.zshrc"
   fi
 
@@ -127,4 +127,3 @@ main() {
 }
 
 main "$@"
-
