@@ -85,7 +85,7 @@ Restart your terminal (or `source` your profile) after running.
 
 ### 0.5 Configure MCP (Optional)
 
-If you already have local tool configs, this command will add the DataGen MCP server to them (Codex, Claude, Gemini, and `~/.mcp.json`):
+If you already have local tool configs, this command will add the DataGen MCP server to them (Codex, Claude, and Gemini):
 
 ```bash
 datagen mcp

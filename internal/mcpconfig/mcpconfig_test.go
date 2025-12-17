@@ -53,23 +53,13 @@ http_headers = { "x-api-key" = "old" }
 	}
 }
 
-func TestUpdateClaudeConfig_RemovesTopLevelMcpServers(t *testing.T) {
+func TestUpdateClaudeConfig_WritesTopLevelMCPServers(t *testing.T) {
 	t.Setenv("HOME", "/Users/testuser")
 
 	input := `{
   "cachedChangelog": "x",
-  "mcpServers": {
-    "playwright": {
-      "type": "stdio"
-    }
-  },
-  "/Users/testuser": {
-    "mcpServers": {
-      "Existing": {
-        "type": "http",
-        "url": "https://example.com"
-      }
-    }
+  "cachedGrowthBookFeatures": {
+    "persimmon_marble_flag": "N/A"
   }
 }`
 
@@ -80,6 +70,16 @@ func TestUpdateClaudeConfig_RemovesTopLevelMcpServers(t *testing.T) {
 	if !changed {
 		t.Fatalf("expected changed=true")
 	}
+	// Ensure "headers" is last within the datagen server object.
+	idxType := strings.Index(out, `"type": "http"`)
+	idxURL := strings.Index(out, `"url": "`+DatagenMCPURL+`"`)
+	idxHeaders := strings.Index(out, `"headers": {`)
+	if idxType == -1 || idxURL == -1 || idxHeaders == -1 {
+		t.Fatalf("expected datagen server fields present, got:\n%s", out)
+	}
+	if !(idxType < idxURL && idxURL < idxHeaders) {
+		t.Fatalf("expected field order type < url < headers, got indices type=%d url=%d headers=%d\n%s", idxType, idxURL, idxHeaders, out)
+	}
 
 	var root map[string]any
 	if err := json.Unmarshal([]byte(out), &root); err != nil {
@@ -88,47 +88,19 @@ func TestUpdateClaudeConfig_RemovesTopLevelMcpServers(t *testing.T) {
 	if _, ok := root["cachedChangelog"]; !ok {
 		t.Fatalf("expected cachedChangelog preserved")
 	}
-	if _, ok := root["mcpServers"]; ok {
-		t.Fatalf("expected top-level mcpServers removed")
+	if _, ok := root["/Users/testuser"]; ok {
+		t.Fatalf("did not expect per-home section to be created")
 	}
-	sec, _ := root["/Users/testuser"].(map[string]any)
-	if sec == nil {
-		t.Fatalf("expected home section present")
-	}
-	servers, _ := sec["mcpServers"].(map[string]any)
+	servers, _ := root["mcpServers"].(map[string]any)
 	if servers == nil {
-		t.Fatalf("expected home mcpServers present")
+		t.Fatalf("expected top-level mcpServers present")
 	}
-	if _, ok := servers["Existing"]; !ok {
-		t.Fatalf("expected Existing server preserved")
+	if _, ok := servers["datagen"]; !ok {
+		t.Fatalf("expected datagen server added")
 	}
-	if _, ok := servers["playwright"]; !ok {
-		t.Fatalf("expected top-level servers merged into home section")
-	}
-	if _, ok := servers["Datagen"]; !ok {
-		t.Fatalf("expected Datagen server added")
-	}
-}
 
-func TestUpdateMCPJSONConfig_AddsDatagen(t *testing.T) {
-	input := `{
-  "mcpServers": {
-    "dropbox": {
-      "command": "npx",
-      "args": ["-y", "@klavis/mcp-dropbox-server"],
-      "env": {"DROPBOX_SERVER_URL": "x"}
-    }
-  }
-}`
-
-	out, changed, err := UpdateMCPJSONConfig(input, "k123")
-	if err != nil {
-		t.Fatalf("UpdateMCPJSONConfig() error = %v", err)
-	}
-	if !changed {
-		t.Fatalf("expected changed=true")
-	}
-	if !strings.Contains(out, `"datagen"`) || !strings.Contains(out, DatagenMCPURL) {
-		t.Fatalf("expected datagen server added, got:\n%s", out)
+	features, _ := root["cachedGrowthBookFeatures"].(map[string]any)
+	if features == nil || features["persimmon_marble_flag"] != "N/A" {
+		t.Fatalf("expected cachedGrowthBookFeatures preserved")
 	}
 }

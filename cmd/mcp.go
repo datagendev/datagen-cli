@@ -26,13 +26,12 @@ var mcpCmd = &cobra.Command{
 	Long: `Configure the DataGen MCP server in supported local tools if their config files exist:
 - Codex (~/.codex/config.toml)
 - Claude (~/.claude.json)
-- Gemini (~/.gemini/settings.json)
-- MCP JSON (~/.mcp.json)`,
+- Gemini (~/.gemini/settings.json)`,
 	Run: runMCP,
 }
 
 func init() {
-	mcpCmd.Flags().StringVar(&mcpClients, "clients", "codex,claude,gemini,mcp", "Comma-separated clients to configure (codex, claude, gemini, mcp)")
+	mcpCmd.Flags().StringVar(&mcpClients, "clients", "codex,claude,gemini", "Comma-separated clients to configure (codex, claude, gemini)")
 	mcpCmd.Flags().StringVar(&mcpAPIKey, "api-key", "", "DataGen API key (if empty, uses env/profile lookup or prompts when needed)")
 	mcpCmd.Flags().StringVar(&mcpEnvVar, "env", "DATAGEN_API_KEY", "Environment variable name to look up for the API key")
 	mcpCmd.Flags().BoolVarP(&mcpYes, "yes", "y", false, "Skip confirmation prompts")
@@ -53,7 +52,7 @@ func runMCP(cmd *cobra.Command, args []string) {
 		// Defer until after we resolve API key (if codex-static is enabled).
 	}
 
-	apiKeyNeeded := selected["claude"] || selected["gemini"] || selected["mcp"] || (selected["codex"] && mcpCodexStatic)
+	apiKeyNeeded := selected["claude"] || selected["gemini"] || (selected["codex"] && mcpCodexStatic)
 	apiKey := ""
 	if apiKeyNeeded {
 		apiKey = mustResolveAPIKey()
@@ -85,17 +84,6 @@ func runMCP(cmd *cobra.Command, args []string) {
 		changed, ok, err := configureGemini(apiKey)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Gemini: %v\n", err)
-			os.Exit(1)
-		}
-		if ok {
-			didAnything = didAnything || changed
-		}
-	}
-
-	if selected["mcp"] {
-		changed, ok, err := configureMCPJSON(apiKey)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "MCP JSON: %v\n", err)
 			os.Exit(1)
 		}
 		if ok {
@@ -292,62 +280,6 @@ func configureGemini(apiKey string) (changed bool, fileExists bool, err error) {
 		fmt.Printf("Gemini: updated %s\n", path)
 	} else {
 		fmt.Printf("Gemini: already configured (%s)\n", path)
-	}
-	return changed, true, nil
-}
-
-func configureMCPJSON(apiKey string) (changed bool, fileExists bool, err error) {
-	path, err := mcpconfig.MCPJSONConfigPath()
-	if err != nil {
-		return false, false, err
-	}
-	if _, statErr := os.Stat(path); statErr != nil {
-		if os.IsNotExist(statErr) {
-			fmt.Printf("MCP JSON: skipped (missing %s)\n", path)
-			return false, false, nil
-		}
-		return false, false, statErr
-	}
-
-	if mcpDryRun {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return false, true, err
-		}
-		_, changed, err := mcpconfig.UpdateMCPJSONConfig(string(data), apiKey)
-		if err != nil {
-			return false, true, err
-		}
-		if changed {
-			fmt.Printf("MCP JSON: would update %s\n", path)
-		} else {
-			fmt.Printf("MCP JSON: already configured (%s)\n", path)
-		}
-		return changed, true, nil
-	}
-
-	if !mcpYes {
-		confirm := true
-		if err := survey.AskOne(&survey.Confirm{
-			Message: fmt.Sprintf("Update MCP config at %s? (stores API key in the file)", path),
-			Default: true,
-		}, &confirm); err != nil {
-			return false, true, err
-		}
-		if !confirm {
-			fmt.Printf("MCP JSON: skipped (%s)\n", path)
-			return false, true, nil
-		}
-	}
-
-	changed, err = mcpconfig.UpdateMCPJSONConfigFile(path, apiKey)
-	if err != nil {
-		return false, true, err
-	}
-	if changed {
-		fmt.Printf("MCP JSON: updated %s\n", path)
-	} else {
-		fmt.Printf("MCP JSON: already configured (%s)\n", path)
 	}
 	return changed, true, nil
 }

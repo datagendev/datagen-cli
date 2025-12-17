@@ -37,14 +37,6 @@ func GeminiConfigPath() (string, error) {
 	return filepath.Join(home, ".gemini", "settings.json"), nil
 }
 
-func MCPJSONConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".mcp.json"), nil
-}
-
 func ClaudeConfigPathLegacy() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -224,11 +216,6 @@ func UpdateClaudeConfig(contents string, apiKey string) (string, bool, error) {
 		return "", false, errors.New("api key is required")
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false, fmt.Errorf("failed to resolve home dir: %w", err)
-	}
-
 	var root map[string]any
 	if strings.TrimSpace(contents) != "" {
 		if err := json.Unmarshal([]byte(contents), &root); err != nil {
@@ -239,43 +226,34 @@ func UpdateClaudeConfig(contents string, apiKey string) (string, bool, error) {
 		root = map[string]any{}
 	}
 
-	// If top-level mcpServers exists, merge it into the per-home section and remove the duplicate.
-	topLevelServers, _ := root["mcpServers"].(map[string]any)
-
-	section, _ := root[home].(map[string]any)
-	if section == nil {
-		section = map[string]any{}
-		root[home] = section
-	}
-
-	servers, _ := section["mcpServers"].(map[string]any)
+	servers, _ := root["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
-		section["mcpServers"] = servers
+		root["mcpServers"] = servers
 	}
 
-	mergedTopLevel := false
-	if topLevelServers != nil {
-		for k, v := range topLevelServers {
-			if _, exists := servers[k]; !exists {
-				servers[k] = v
-				mergedTopLevel = true
-			}
-		}
-		delete(root, "mcpServers")
-	}
-
-	if claudeDatagenServerIsCurrent(servers["Datagen"], apiKey) && !mergedTopLevel && topLevelServers == nil {
+	if claudeDatagenServerIsCurrent(servers["datagen"], apiKey) {
 		return ensureTrailingNewline(contents), false, nil
 	}
 
-	servers["Datagen"] = map[string]any{
-		"type": "http",
-		"url":  DatagenMCPURL,
-		"headers": map[string]any{
+	// Keep a stable key ordering inside the Datagen server object; some tools are
+	// picky about formatting and users prefer "headers" last.
+	type claudeServer struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+	}
+	encoded, err := json.Marshal(claudeServer{
+		Type: "http",
+		URL:  DatagenMCPURL,
+		Headers: map[string]string{
 			"X-API-Key": apiKey,
 		},
+	})
+	if err != nil {
+		return "", false, err
 	}
+	servers["datagen"] = json.RawMessage(encoded)
 
 	out, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
@@ -343,75 +321,28 @@ func UpdateGeminiConfig(contents string, apiKey string) (string, bool, error) {
 	return outStr, outStr != contents, nil
 }
 
-func UpdateMCPJSONConfigFile(path string, apiKey string) (bool, error) {
-	raw, mode, err := readFileWithMode(path)
-	if err != nil {
-		return false, err
-	}
-
-	updated, changed, err := UpdateMCPJSONConfig(raw, apiKey)
-	if err != nil {
-		return false, err
-	}
-	if !changed {
-		return false, nil
-	}
-	return true, writeFileAtomic(path, []byte(updated), mode)
-}
-
-func UpdateMCPJSONConfig(contents string, apiKey string) (string, bool, error) {
-	if strings.TrimSpace(apiKey) == "" {
-		return "", false, errors.New("api key is required")
-	}
-
-	var root map[string]any
-	if strings.TrimSpace(contents) != "" {
-		if err := json.Unmarshal([]byte(contents), &root); err != nil {
-			return "", false, fmt.Errorf("failed to parse JSON: %w", err)
-		}
-	}
-	if root == nil {
-		root = map[string]any{}
-	}
-
-	servers, _ := root["mcpServers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
-		root["mcpServers"] = servers
-	}
-
-	if mcpJSONDatagenServerIsCurrent(servers["datagen"], apiKey) {
-		return ensureTrailingNewline(contents), false, nil
-	}
-
-	servers["datagen"] = map[string]any{
-		"url": DatagenMCPURL,
-		"headers": map[string]any{
-			"X-API-Key": apiKey,
-		},
-	}
-
-	out, err := json.MarshalIndent(root, "", "  ")
-	if err != nil {
-		return "", false, err
-	}
-	outStr := string(out) + "\n"
-	return outStr, outStr != contents, nil
-}
-
 func claudeDatagenServerIsCurrent(v any, apiKey string) bool {
-	m, _ := v.(map[string]any)
-	if m == nil {
+	switch t := v.(type) {
+	case map[string]any:
+		if t["type"] != "http" || t["url"] != DatagenMCPURL {
+			return false
+		}
+		headers, _ := t["headers"].(map[string]any)
+		if headers == nil {
+			return false
+		}
+		return headers["X-API-Key"] == apiKey
+	case json.RawMessage:
+		var m map[string]any
+		if err := json.Unmarshal(t, &m); err != nil {
+			return false
+		}
+		return claudeDatagenServerIsCurrent(m, apiKey)
+	case []byte:
+		return claudeDatagenServerIsCurrent(json.RawMessage(t), apiKey)
+	default:
 		return false
 	}
-	if m["type"] != "http" || m["url"] != DatagenMCPURL {
-		return false
-	}
-	headers, _ := m["headers"].(map[string]any)
-	if headers == nil {
-		return false
-	}
-	return headers["X-API-Key"] == apiKey
 }
 
 func geminiDatagenServerIsCurrent(v any, apiKey string) bool {
@@ -427,21 +358,6 @@ func geminiDatagenServerIsCurrent(v any, apiKey string) bool {
 		return false
 	}
 	return headers["X-API-KEY"] == apiKey
-}
-
-func mcpJSONDatagenServerIsCurrent(v any, apiKey string) bool {
-	m, _ := v.(map[string]any)
-	if m == nil {
-		return false
-	}
-	if m["url"] != DatagenMCPURL {
-		return false
-	}
-	headers, _ := m["headers"].(map[string]any)
-	if headers == nil {
-		return false
-	}
-	return headers["X-API-Key"] == apiKey
 }
 
 func ensureTrailingNewline(s string) string {
