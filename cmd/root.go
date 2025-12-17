@@ -14,6 +14,8 @@ var rootCmd = &cobra.Command{
 for deploying Claude Code agents with DataGen MCP integration.
 
 Usage:
+  datagen login      - Save your DataGen API key
+  datagen mcp        - Configure DataGen MCP locally
   datagen start      - Interactive project setup
   datagen build      - Generate code from datagen.toml
   datagen add        - Add a new service to existing project
@@ -29,6 +31,8 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(addCmd)

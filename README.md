@@ -74,6 +74,23 @@ datagen --help
 
 ## Usage
 
+### 0. Login (Set `DATAGEN_API_KEY`)
+
+```bash
+datagen login
+```
+
+This saves your API key as `DATAGEN_API_KEY` by updating your shell profile (for example `~/.zshrc`).
+Restart your terminal (or `source` your profile) after running.
+
+### 0.5 Configure MCP (Optional)
+
+If you already have local tool configs, this command will add the DataGen MCP server to them (Codex, Claude, Gemini, and `~/.mcp.json`):
+
+```bash
+datagen mcp
+```
+
 ### 1. Start a New Project
 
 ```bash
