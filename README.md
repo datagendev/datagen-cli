@@ -342,6 +342,10 @@ Generate FastAPI boilerplate from `datagen.toml`.
 Deploy to cloud platform. Currently supports:
 - `railway` - Deploy to Railway
 
+**Options:**
+- `-v`, `--var` - Set Railway environment variables (repeatable). Formats: `KEY=VALUE` or `KEY` (use current env value)
+- `--project-name` - Railway project name (defaults to current folder name)
+
 ## Development
 
 ### Prerequisites
