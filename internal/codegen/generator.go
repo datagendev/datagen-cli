@@ -375,14 +375,25 @@ CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 func generateEnvExample(cfg *config.DatagenConfig, outputDir string) error {
 	content := fmt.Sprintf(`# Required
 %s=your-anthropic-api-key-here
-%s=your-datagen-api-key-here
+`, cfg.ClaudeAPIKeyEnv)
 
+	if cfg.RequiresDatagenAPIKey() {
+		content += fmt.Sprintf("%s=your-datagen-api-key-here\n", cfg.DatagenAPIKeyEnv)
+	}
+
+	content += fmt.Sprintf(`
 # Optional
+%s
 MODEL_NAME=claude-sonnet-4-5
 LOG_LEVEL=INFO
 PORT=8000
 PERMISSION_MODE=bypassPermissions
-`, cfg.ClaudeAPIKeyEnv, cfg.DatagenAPIKeyEnv)
+`, func() string {
+		if cfg.RequiresDatagenAPIKey() {
+			return ""
+		}
+		return fmt.Sprintf("%s=your-datagen-api-key-here\n", cfg.DatagenAPIKeyEnv)
+	}())
 
 	// Add service-specific env vars
 	for _, svc := range cfg.Services {

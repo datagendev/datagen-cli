@@ -7,6 +7,20 @@ type DatagenConfig struct {
 	Services         []Service `toml:"service"`
 }
 
+// RequiresDatagenAPIKey reports whether the generated runtime should require a DataGen API key.
+// This is inferred from whether any service enables DataGen tool usage.
+func (c *DatagenConfig) RequiresDatagenAPIKey() bool {
+	for _, svc := range c.Services {
+		if svc.AllowedTools.SearchTools ||
+			svc.AllowedTools.ExecuteTools ||
+			svc.AllowedTools.ExecuteCode ||
+			svc.AllowedTools.GetToolDetails {
+			return true
+		}
+	}
+	return false
+}
+
 // Service represents a single service/endpoint configuration
 type Service struct {
 	Name         string       `toml:"name"`
@@ -69,8 +83,8 @@ type WebhookConfig struct {
 
 // APIConfig contains API-specific configuration
 type APIConfig struct {
-	ResponseFormat   string `toml:"response_format"`     // json, text, custom
-	Timeout          int    `toml:"timeout"`             // seconds
+	ResponseFormat   string `toml:"response_format"` // json, text, custom
+	Timeout          int    `toml:"timeout"`         // seconds
 	RateLimitEnabled bool   `toml:"rate_limit_enabled"`
 	RateLimitRPM     int    `toml:"rate_limit_rpm,omitempty"` // requests per minute
 }

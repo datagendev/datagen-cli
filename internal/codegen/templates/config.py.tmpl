@@ -21,9 +21,15 @@ class Settings(BaseSettings):
     {{.ClaudeAPIKeyEnv | lower}}: str = Field(
         ..., description="Anthropic API key for Claude agent execution"
     )
+    {{if .RequiresDatagenAPIKey}}
     {{.DatagenAPIKeyEnv | lower}}: str = Field(
         ..., description="DataGen API key for MCP integration"
     )
+    {{else}}
+    {{.DatagenAPIKeyEnv | lower}}: Optional[str] = Field(
+        default=None, description="DataGen API key for MCP integration (optional)"
+    )
+    {{end}}
 
     # Service-specific secrets
     {{range .Services}}
@@ -71,11 +77,17 @@ class Settings(BaseSettings):
 
     @field_validator("{{.DatagenAPIKeyEnv | lower}}")
     @classmethod
-    def validate_datagen_key(cls, v: str) -> str:
+    def validate_datagen_key(cls, v: Optional[str]) -> Optional[str]:
         """Ensure DataGen API key is set."""
+        {{if .RequiresDatagenAPIKey}}
         if not v or not v.strip():
             raise ValueError("{{.DatagenAPIKeyEnv}} is required")
         return v.strip()
+        {{else}}
+        if not v:
+            return v
+        return v.strip()
+        {{end}}
 
 
 # Global settings instance

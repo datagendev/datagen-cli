@@ -16,7 +16,7 @@ for deploying Claude Code agents with DataGen MCP integration.
 Usage:
   datagen login      - Save your DataGen API key
   datagen mcp        - Configure DataGen MCP locally
-  datagen start      - Interactive project setup
+  datagen start      - Defaults-first project setup
   datagen build      - Generate code from datagen.toml
   datagen add        - Add a new service to existing project
   datagen deploy     - Deploy to Railway`,

@@ -4,7 +4,7 @@ A command-line tool for generating production-ready FastAPI boilerplate for depl
 
 ## Features
 
-- 🎯 **Interactive Setup** - Answer simple questions to configure your project
+- 🎯 **Defaults-First Setup** - Pick an agent + endpoint mode, everything else is defaulted
 - 🔧 **Multiple Endpoint Types** - Support for webhooks, synchronous APIs, and streaming endpoints
 - 🔐 **Built-in Auth** - API key, bearer token, and HMAC signature verification
 - 📝 **Type-Safe** - Generates Pydantic models from your schema definitions
@@ -97,16 +97,20 @@ datagen mcp
 datagen start
 ```
 
-This will interactively guide you through:
-- Configuring API key environment variables
-- Creating services/endpoints
-- Choosing endpoint types (webhook, api, streaming)
-- Defining input/output schemas
-- Setting up authentication
-- Selecting allowed DataGen tools
+This defaults everything and only asks you to:
+- Select an existing agent file from `.claude/agents/*.md`
+- Choose whether to deploy it as an `api` or `webhook`
+
+If you don’t have any `.claude/agents/*.md` files yet, run:
+```bash
+datagen start --advanced
+```
 
 **Options:**
 - `--output`, `-o` - Directory to save the configuration file (default: current directory)
+- `--agent` - Agent to deploy (agent name or filename under `.claude/agents`)
+- `--mode` - Deployment mode (`api` or `webhook`)
+- `--advanced` - Full interactive flow (services, schemas, auth, etc.)
 
 **Example:**
 ```bash
@@ -317,12 +321,10 @@ env_var = "API_TOKEN"
 
 ### `datagen start`
 
-Interactive project setup. Creates `datagen.toml` configuration file.
+Defaults-first project setup. Creates `datagen.toml` configuration file from an existing `.claude/agents/*.md` agent.
 
 **Options:**
-- Supports multiple services in one project
-- Each service can have different endpoint types
-- Conditional prompts based on endpoint type
+- `--advanced` enables the full interactive flow (multiple services, schemas, auth, etc.)
 
 ### `datagen build`
 
