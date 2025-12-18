@@ -139,13 +139,13 @@ async def verify_{{.Name}}_auth({{if eq .Auth.Type "api_key"}}{{.Auth.Header | l
 {{if and .Webhook .Webhook.SignatureVerification (eq .Webhook.SignatureVerification "hmac_sha256")}}
 def verify_{{.Name}}_signature(request: Request, body: bytes):
     """Verify HMAC signature for {{.Name}} webhook."""
-    signature = request.headers.get("{{.Webhook.SignatureHeader}}")
-    if not signature:
-        raise HTTPException(status_code=401, detail="Missing signature")
-
     secret = getattr(settings, "{{.Webhook.SecretEnv | lower}}", None)
     if not secret:
         return  # Verification optional if secret not configured
+
+    signature = request.headers.get("{{.Webhook.SignatureHeader}}")
+    if not signature:
+        raise HTTPException(status_code=401, detail="Missing signature")
 
     expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(signature, expected):

@@ -221,7 +221,7 @@ func collectWebhookConfig(svc *config.Service) error {
 	if err := survey.AskOne(&survey.Select{
 		Message: "Signature verification method:",
 		Options: []string{"hmac_sha256", "custom", "none"},
-		Default: "hmac_sha256",
+		Default: "none",
 		Help:    "How to verify webhook authenticity",
 	}, &sigType); err != nil {
 		return err

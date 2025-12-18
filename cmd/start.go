@@ -235,9 +235,7 @@ func runStartFromExistingAgents() error {
 	case "webhook":
 		svc.WebhookPath = fmt.Sprintf("/webhook/%s", serviceName)
 		svc.Webhook = &config.WebhookConfig{
-			SignatureVerification: "hmac_sha256",
-			SignatureHeader:       "X-Signature",
-			SecretEnv:             config.NormalizeEnvVarName(serviceName) + "_HMAC_SECRET",
+			SignatureVerification: "none",
 			RetryEnabled:          false,
 		}
 	case "api":
