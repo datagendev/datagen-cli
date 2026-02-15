@@ -264,6 +264,44 @@ func (c *Client) RunAgent(agentID string, payload interface{}) (*RunAgentRespons
 	return &resp, nil
 }
 
+// ==========================================
+// Secret Methods
+// ==========================================
+
+// ListSecrets returns the user's secrets (masked values only)
+// Reuses the existing mcpGetUserSecretKeys endpoint
+func (c *Client) ListSecrets() (*ListSecretsResponse, error) {
+	body, err := c.doRequest("GET", "/mcp/user-secrets/keys", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ListSecretsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// UpsertSecret creates or updates a secret
+func (c *Client) UpsertSecret(name, value string) (*UpsertSecretResponse, error) {
+	body, err := c.doRequest("POST", "/mcp/cli/secrets/upsert", UpsertSecretRequest{
+		Name:  name,
+		Value: value,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp UpsertSecretResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
 // ListAgentExecutions returns executions for an agent
 func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutionsResponse, error) {
 	path := fmt.Sprintf("/api/cli/agents/%s/executions", agentID)

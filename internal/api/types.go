@@ -197,6 +197,38 @@ type ListExecutionsResponse struct {
 	Executions []Execution `json:"executions"`
 }
 
+// Secret types
+
+type Secret struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName"`
+	MaskedValue string    `json:"maskedValue"`
+	Provider    *string   `json:"provider"`
+	Category    string    `json:"category"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type ListSecretsData struct {
+	SecretKeys []Secret `json:"secretKeys"`
+}
+
+type ListSecretsResponse struct {
+	Success bool            `json:"success"`
+	Data    ListSecretsData `json:"data"`
+}
+
+type UpsertSecretRequest struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type UpsertSecretResponse struct {
+	Secret  Secret `json:"secret"`
+	Created bool   `json:"created"`
+}
+
 // Error response
 
 type ErrorResponse struct {
