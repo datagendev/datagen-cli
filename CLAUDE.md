@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**datagen-cli** is a Go-based CLI tool that generates production-ready FastAPI boilerplate for deploying Claude Code agents with DataGen MCP integration. It uses Cobra for CLI commands, Survey for interactive prompts, and Go templates for code generation.
+**datagen-cli** is a Go-based CLI tool for deploying and managing AI agents on the DataGen platform. It connects GitHub repos, discovers Claude Code agents, and deploys them as live webhook endpoints. Built with Cobra for CLI commands and Viper for configuration.
 
 ## Build and Development Commands
 
