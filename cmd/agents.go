@@ -15,6 +15,17 @@ var (
 	agentsDeployedOnly bool
 	agentsRunPayload   string
 	agentsExecLimit    int
+
+	// Config flags
+	configSetPrompt       string
+	configClearPrompt     bool
+	configSecrets         string
+	configPrMode          string
+	configAddRecipient    string
+	configRemoveRecipient string
+	configNotifySuccess   string
+	configNotifyFailure   string
+	configNotifyReply     string
 )
 
 var agentsCmd = &cobra.Command{
@@ -77,6 +88,26 @@ var agentsLogsCmd = &cobra.Command{
 	Run:   runAgentsLogs,
 }
 
+var agentsConfigCmd = &cobra.Command{
+	Use:   "config <agent-id>",
+	Short: "View or update agent configuration",
+	Long: `View or update the unified configuration for an agent.
+
+With no flags, displays the current configuration (entry prompt,
+webhook settings, notifications, and recipients).
+
+With any update flag, applies the changes and displays the result.
+
+Examples:
+  datagen agents config <agent-id>
+  datagen agents config <agent-id> --set-prompt "You are a helpful assistant"
+  datagen agents config <agent-id> --secrets KEY1,KEY2 --pr-mode create_pr
+  datagen agents config <agent-id> --add-recipient user@example.com:OWNER
+  datagen agents config <agent-id> --notify-success true --notify-failure default`,
+	Args: cobra.ExactArgs(1),
+	Run:  runAgentsConfig,
+}
+
 func init() {
 	agentsListCmd.Flags().StringVar(&agentsListRepo, "repo", "", "Filter by repository (owner/repo)")
 	agentsListCmd.Flags().BoolVar(&agentsDeployedOnly, "deployed", false, "Show only deployed agents")
@@ -85,12 +116,23 @@ func init() {
 
 	agentsLogsCmd.Flags().IntVar(&agentsExecLimit, "limit", 10, "Maximum number of executions to show")
 
+	agentsConfigCmd.Flags().StringVar(&configSetPrompt, "set-prompt", "", "Set the entry prompt text")
+	agentsConfigCmd.Flags().BoolVar(&configClearPrompt, "clear-prompt", false, "Clear the entry prompt")
+	agentsConfigCmd.Flags().StringVar(&configSecrets, "secrets", "", "Comma-separated secret names for webhook")
+	agentsConfigCmd.Flags().StringVar(&configPrMode, "pr-mode", "", "PR mode: create_pr, auto_merge, or skip")
+	agentsConfigCmd.Flags().StringVar(&configAddRecipient, "add-recipient", "", "Add recipient as email[:role] (role defaults to VIEWER)")
+	agentsConfigCmd.Flags().StringVar(&configRemoveRecipient, "remove-recipient", "", "Remove recipient by ID")
+	agentsConfigCmd.Flags().StringVar(&configNotifySuccess, "notify-success", "", "Email on success: true, false, or default")
+	agentsConfigCmd.Flags().StringVar(&configNotifyFailure, "notify-failure", "", "Email on failure: true, false, or default")
+	agentsConfigCmd.Flags().StringVar(&configNotifyReply, "notify-reply", "", "Email reply-to-resume: true, false, or default")
+
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsShowCmd)
 	agentsCmd.AddCommand(agentsDeployCmd)
 	agentsCmd.AddCommand(agentsUndeployCmd)
 	agentsCmd.AddCommand(agentsRunCmd)
 	agentsCmd.AddCommand(agentsLogsCmd)
+	agentsCmd.AddCommand(agentsConfigCmd)
 }
 
 func runAgentsList(cmd *cobra.Command, args []string) {
@@ -398,6 +440,199 @@ func runAgentsLogs(cmd *cobra.Command, args []string) {
 
 		fmt.Println()
 	}
+}
+
+func runAgentsConfig(cmd *cobra.Command, args []string) {
+	agentID := args[0]
+
+	client, err := getAPIClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Check if any update flags were provided
+	hasUpdate := configSetPrompt != "" || configClearPrompt ||
+		configSecrets != "" || configPrMode != "" ||
+		configAddRecipient != "" || configRemoveRecipient != "" ||
+		configNotifySuccess != "" || configNotifyFailure != "" ||
+		configNotifyReply != ""
+
+	if hasUpdate {
+		req := buildConfigUpdateRequest()
+		_, err := client.UpdateAgentConfig(agentID, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error updating config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Configuration updated.")
+		fmt.Println()
+	}
+
+	// Always fetch and display current config
+	config, err := client.GetAgentConfig(agentID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	displayAgentConfig(config)
+}
+
+func buildConfigUpdateRequest() api.UpdateAgentConfigRequest {
+	req := api.UpdateAgentConfigRequest{}
+
+	// Entry prompt
+	if configClearPrompt {
+		empty := ""
+		req.EntryPrompt = &empty
+	} else if configSetPrompt != "" {
+		req.EntryPrompt = &configSetPrompt
+	}
+
+	// Webhook settings
+	webhook := map[string]interface{}{}
+	if configSecrets != "" {
+		names := strings.Split(configSecrets, ",")
+		trimmed := make([]string, len(names))
+		for i, n := range names {
+			trimmed[i] = strings.TrimSpace(n)
+		}
+		webhook["secretNames"] = trimmed
+	}
+	if configPrMode != "" {
+		webhook["prMode"] = configPrMode
+	}
+	if len(webhook) > 0 {
+		req.Webhook = webhook
+	}
+
+	// Notifications
+	notifications := map[string]interface{}{}
+	if configNotifySuccess != "" {
+		notifications["emailOnSuccess"] = parseBoolOrNull(configNotifySuccess)
+	}
+	if configNotifyFailure != "" {
+		notifications["emailOnFailure"] = parseBoolOrNull(configNotifyFailure)
+	}
+	if configNotifyReply != "" {
+		notifications["emailReplyEnabled"] = parseBoolOrNull(configNotifyReply)
+	}
+	if len(notifications) > 0 {
+		req.Notifications = notifications
+	}
+
+	// Recipients
+	var recipientsUpdate *api.RecipientsUpdate
+	if configAddRecipient != "" {
+		email, role := parseRecipientFlag(configAddRecipient)
+		if recipientsUpdate == nil {
+			recipientsUpdate = &api.RecipientsUpdate{}
+		}
+		recipientsUpdate.Add = []api.RecipientAdd{{Email: email, Role: role}}
+	}
+	if configRemoveRecipient != "" {
+		if recipientsUpdate == nil {
+			recipientsUpdate = &api.RecipientsUpdate{}
+		}
+		recipientsUpdate.Remove = []string{configRemoveRecipient}
+	}
+	req.Recipients = recipientsUpdate
+
+	return req
+}
+
+// parseBoolOrNull converts "true"/"false"/"default" to the appropriate value.
+// "default" returns nil (clears the override), true/false return the boolean.
+func parseBoolOrNull(val string) interface{} {
+	switch strings.ToLower(val) {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return nil
+	}
+}
+
+// parseRecipientFlag parses "email[:role]" format. Defaults role to "VIEWER".
+func parseRecipientFlag(val string) (string, string) {
+	parts := strings.SplitN(val, ":", 2)
+	email := parts[0]
+	role := "VIEWER"
+	if len(parts) == 2 && parts[1] != "" {
+		role = strings.ToUpper(parts[1])
+	}
+	return email, role
+}
+
+func displayAgentConfig(config *api.AgentConfigResponse) {
+	fmt.Printf("Agent: %s (%s)\n", config.AgentName, config.AgentID)
+	fmt.Printf("Repo:  %s\n", config.Repo)
+
+	// Entry Prompt
+	fmt.Println()
+	fmt.Println("Entry Prompt:")
+	if config.EntryPrompt != nil && *config.EntryPrompt != "" {
+		fmt.Printf("  \"%s\"\n", *config.EntryPrompt)
+	} else {
+		fmt.Println("  (not set)")
+	}
+
+	// Webhook
+	fmt.Println()
+	fmt.Println("Webhook:")
+	if config.Webhook != nil {
+		if config.Webhook.IsActive {
+			fmt.Println("  Status:  Active")
+		} else {
+			fmt.Println("  Status:  Inactive")
+		}
+		fmt.Printf("  PR Mode: %s\n", config.Webhook.PrMode)
+		if len(config.Webhook.SecretNames) > 0 {
+			fmt.Printf("  Secrets: %s\n", strings.Join(config.Webhook.SecretNames, ", "))
+		} else {
+			fmt.Println("  Secrets: (none)")
+		}
+	} else {
+		fmt.Println("  (not deployed)")
+	}
+
+	// Notifications
+	fmt.Println()
+	fmt.Println("Notifications:")
+	if config.Notifications != nil {
+		fmt.Printf("  On Success: %s\n", formatBoolOverride(config.Notifications.EmailOnSuccess))
+		fmt.Printf("  On Failure: %s\n", formatBoolOverride(config.Notifications.EmailOnFailure))
+		fmt.Printf("  Reply:      %s\n", formatBoolOverride(config.Notifications.EmailReplyEnabled))
+	} else {
+		fmt.Println("  (using global defaults)")
+	}
+
+	// Recipients
+	fmt.Println()
+	fmt.Println("Recipients:")
+	if len(config.Recipients) > 0 {
+		for _, r := range config.Recipients {
+			name := ""
+			if r.Name != nil {
+				name = " (" + *r.Name + ")"
+			}
+			fmt.Printf("  %s%s [%s] id=%s\n", r.Email, name, r.Role, r.ID)
+		}
+	} else {
+		fmt.Println("  (none)")
+	}
+}
+
+func formatBoolOverride(val *bool) string {
+	if val == nil {
+		return "default (global)"
+	}
+	if *val {
+		return "true (agent override)"
+	}
+	return "false (agent override)"
 }
 
 func getExecutionStatusIcon(status string) string {

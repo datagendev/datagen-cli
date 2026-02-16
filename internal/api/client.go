@@ -302,6 +302,30 @@ func (c *Client) UpsertSecret(name, value string) (*UpsertSecretResponse, error)
 	return &resp, nil
 }
 
+// ==========================================
+// Agent Config Methods
+// ==========================================
+
+// GetAgentConfig returns the unified configuration for an agent
+func (c *Client) GetAgentConfig(agentID string) (*AgentConfigResponse, error) {
+	body, err := c.doRequest("GET", fmt.Sprintf("/api/agents/%s/config", agentID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp AgentConfigResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// UpdateAgentConfig updates the unified configuration for an agent
+func (c *Client) UpdateAgentConfig(agentID string, req UpdateAgentConfigRequest) ([]byte, error) {
+	return c.doRequest("POST", fmt.Sprintf("/api/agents/%s/config", agentID), req)
+}
+
 // ListAgentExecutions returns executions for an agent
 func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutionsResponse, error) {
 	path := fmt.Sprintf("/api/cli/agents/%s/executions", agentID)

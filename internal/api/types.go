@@ -229,6 +229,56 @@ type UpsertSecretResponse struct {
 	Created bool   `json:"created"`
 }
 
+// Agent Config types
+
+type AgentConfigWebhook struct {
+	SecretNames []string `json:"secretNames"`
+	PrMode      string   `json:"prMode"`
+	IsActive    bool     `json:"isActive"`
+}
+
+type AgentConfigNotifications struct {
+	EmailEnabled      *bool `json:"emailEnabled"`
+	EmailOnSuccess    *bool `json:"emailOnSuccess"`
+	EmailOnFailure    *bool `json:"emailOnFailure"`
+	EmailReplyEnabled *bool `json:"emailReplyEnabled"`
+}
+
+type AgentConfigRecipient struct {
+	ID    string  `json:"id"`
+	Email string  `json:"email"`
+	Name  *string `json:"name"`
+	Role  string  `json:"role"`
+}
+
+type AgentConfigResponse struct {
+	AgentID       string                    `json:"agentId"`
+	AgentName     string                    `json:"agentName"`
+	Repo          string                    `json:"repo"`
+	EntryPrompt   *string                   `json:"entryPrompt"`
+	Webhook       *AgentConfigWebhook       `json:"webhook"`
+	Notifications *AgentConfigNotifications  `json:"notifications"`
+	Recipients    []AgentConfigRecipient     `json:"recipients"`
+}
+
+type RecipientAdd struct {
+	Email string `json:"email"`
+	Name  string `json:"name,omitempty"`
+	Role  string `json:"role"`
+}
+
+type RecipientsUpdate struct {
+	Add    []RecipientAdd `json:"add,omitempty"`
+	Remove []string       `json:"remove,omitempty"`
+}
+
+type UpdateAgentConfigRequest struct {
+	EntryPrompt   *string                `json:"entryPrompt,omitempty"`
+	Webhook       map[string]interface{} `json:"webhook,omitempty"`
+	Notifications map[string]interface{} `json:"notifications,omitempty"`
+	Recipients    *RecipientsUpdate      `json:"recipients,omitempty"`
+}
+
 // Error response
 
 type ErrorResponse struct {

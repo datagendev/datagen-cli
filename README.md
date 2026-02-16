@@ -319,6 +319,88 @@ env_var = "API_TOKEN"
 
 ## Commands
 
+### `datagen login`
+
+Save your DataGen API key to your shell profile.
+
+### `datagen mcp`
+
+Configure the DataGen MCP server in your local MCP clients (Claude Code, Codex, Gemini).
+
+### `datagen github`
+
+Manage GitHub App connections and repositories.
+
+| Subcommand | Description |
+|------------|-------------|
+| `connect` | Install the GitHub App or connect a repository |
+| `repos` | List connected repositories |
+| `sync <repo-id>` | Re-sync agents from a repository |
+
+### `datagen agents`
+
+Manage agents discovered from connected GitHub repositories.
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all discovered agents (`--repo`, `--deployed` filters) |
+| `show <agent-id>` | Show agent details, webhook info, and recent executions |
+| `deploy <agent-id>` | Deploy an agent (creates a webhook endpoint) |
+| `undeploy <agent-id>` | Remove an agent deployment |
+| `run <agent-id>` | Trigger agent execution (`--payload '{...}'`) |
+| `logs <agent-id>` | View execution history (`--limit N`) |
+| `config <agent-id>` | View or update agent configuration (see below) |
+
+#### `datagen agents config`
+
+View or update the unified configuration for an agent. With no flags, displays the current config. With any flag, applies changes then displays the result.
+
+```bash
+# View current configuration
+datagen agents config <agent-id>
+
+# Set entry prompt
+datagen agents config <agent-id> --set-prompt "You are a helpful assistant"
+
+# Clear entry prompt
+datagen agents config <agent-id> --clear-prompt
+
+# Set webhook secrets and PR mode
+datagen agents config <agent-id> --secrets KEY1,KEY2 --pr-mode create_pr
+
+# Add a recipient (role defaults to VIEWER)
+datagen agents config <agent-id> --add-recipient user@example.com:OWNER
+
+# Remove a recipient by ID
+datagen agents config <agent-id> --remove-recipient <recipient-id>
+
+# Configure notifications (true, false, or default to clear override)
+datagen agents config <agent-id> --notify-success true --notify-failure default
+```
+
+**Flags:**
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--set-prompt` | string | Set the entry prompt text |
+| `--clear-prompt` | bool | Clear the entry prompt |
+| `--secrets` | string | Comma-separated secret names for webhook |
+| `--pr-mode` | string | `create_pr`, `auto_merge`, or `skip` |
+| `--add-recipient` | string | Add recipient as `email[:role]` |
+| `--remove-recipient` | string | Remove recipient by ID |
+| `--notify-success` | string | Email on success: `true`, `false`, or `default` |
+| `--notify-failure` | string | Email on failure: `true`, `false`, or `default` |
+| `--notify-reply` | string | Email reply-to-resume: `true`, `false`, or `default` |
+
+### `datagen secrets`
+
+Manage secrets stored in DataGen.
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all secrets (masked values) |
+| `set <name>` | Create or update a secret |
+
 ### `datagen start`
 
 Defaults-first project setup. Creates `datagen.toml` configuration file from an existing `.claude/agents/*.md` agent.
