@@ -57,6 +57,9 @@ var agentsDeployCmd = &cobra.Command{
 	Short: "Deploy an agent",
 	Long: `Deploy an agent to the DataGen platform.
 
+The agent-id is the UUID of the agent (not its name). You can find it
+by running 'datagen agents list' or 'datagen agents show <agent-id>'.
+
 This creates a webhook endpoint that can be triggered to run the agent.`,
 	Args: cobra.ExactArgs(1),
 	Run:  runAgentsDeploy,

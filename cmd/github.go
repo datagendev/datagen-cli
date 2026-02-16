@@ -106,16 +106,40 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n📱 Opening browser to install the DataGen GitHub App...\n")
+	// Check if user already has installations
+	initialResp, err := client.ListGitHubInstallations()
+	initialCount := 0
+	if err == nil {
+		initialCount = len(initialResp.Installations)
+	}
+
+	if initialCount > 0 {
+		// Existing installation(s) -- GitHub will modify rather than create new
+		fmt.Printf("\nYou already have %d GitHub App installation(s).\n", initialCount)
+		fmt.Printf("Opening browser to modify repository access...\n")
+		fmt.Printf("   URL: %s\n\n", resp.InstallUrl)
+
+		if err := openBrowser(resp.InstallUrl); err != nil {
+			fmt.Printf("Could not open browser automatically.\n")
+			fmt.Printf("   Please open this URL manually: %s\n\n", resp.InstallUrl)
+		}
+
+		fmt.Println("After updating access on GitHub, run:")
+		fmt.Println("   datagen github repos          -- to see available repos")
+		fmt.Println("   datagen github connect-repo   -- to connect a repo")
+		return
+	}
+
+	// First-time installation -- open browser and poll for new installation
+	fmt.Printf("\nOpening browser to install the DataGen GitHub App...\n")
 	fmt.Printf("   URL: %s\n\n", resp.InstallUrl)
 
-	// Open browser
 	if err := openBrowser(resp.InstallUrl); err != nil {
-		fmt.Printf("⚠️  Could not open browser automatically.\n")
+		fmt.Printf("Could not open browser automatically.\n")
 		fmt.Printf("   Please open this URL manually: %s\n\n", resp.InstallUrl)
 	}
 
-	fmt.Println("⏳ Waiting for GitHub App installation...")
+	fmt.Println("Waiting for GitHub App installation...")
 	fmt.Println("   (Press Ctrl+C to cancel)")
 	fmt.Println()
 
@@ -123,12 +147,6 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 	timeout := time.Duration(githubConnectTimeout) * time.Second
 	pollInterval := 5 * time.Second
 	deadline := time.Now().Add(timeout)
-
-	initialCount := 0
-	initialResp, err := client.ListGitHubInstallations()
-	if err == nil {
-		initialCount = len(initialResp.Installations)
-	}
 
 	for time.Now().Before(deadline) {
 		time.Sleep(pollInterval)
@@ -141,14 +159,14 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 		if len(installations.Installations) > initialCount {
 			// New installation found
 			newInstall := installations.Installations[len(installations.Installations)-1]
-			fmt.Printf("✅ GitHub App installed successfully!\n")
+			fmt.Printf("GitHub App installed successfully!\n")
 			fmt.Printf("   Account: %s (%s)\n", newInstall.AccountLogin, newInstall.AccountType)
 			fmt.Println()
 
 			// List available repos
 			reposResp, err := client.ListAvailableRepos()
 			if err != nil {
-				fmt.Printf("⚠️  Could not list repos: %v\n", err)
+				fmt.Printf("Could not list repos: %v\n", err)
 				return
 			}
 
@@ -159,9 +177,9 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 			}
 
 			if totalRepos == 0 {
-				fmt.Println("📁 No repositories found. Make sure the GitHub App has access to your repos.")
+				fmt.Println("No repositories found. Make sure the GitHub App has access to your repos.")
 			} else {
-				fmt.Printf("📁 Found %d accessible repositories:\n", totalRepos)
+				fmt.Printf("Found %d accessible repositories:\n", totalRepos)
 				count := 0
 				for _, inst := range reposResp.Installations {
 					for _, repo := range inst.Repos {
@@ -169,11 +187,7 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 							fmt.Printf("   ... and %d more\n", totalRepos-10)
 							break
 						}
-						visibility := "🔒"
-						if !repo.Private {
-							visibility = "🌐"
-						}
-						fmt.Printf("   %s %s\n", visibility, repo.FullName)
+						fmt.Printf("   %s\n", repo.FullName)
 						count++
 					}
 					if count >= 10 {
@@ -183,7 +197,7 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 			}
 
 			fmt.Println()
-			fmt.Println("📝 Next steps:")
+			fmt.Println("Next steps:")
 			fmt.Println("   1. Run 'datagen github connect-repo <owner/repo>' to connect a repository")
 			fmt.Println("   2. Run 'datagen agents list' to see discovered agents")
 			return
@@ -193,7 +207,7 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
-	fmt.Println("⏰ Timed out waiting for GitHub App installation.")
+	fmt.Println("Timed out waiting for GitHub App installation.")
 	fmt.Println("   If you completed the installation, run 'datagen github status' to check.")
 }
 
