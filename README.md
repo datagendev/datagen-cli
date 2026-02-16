@@ -350,6 +350,39 @@ Manage agents discovered from connected GitHub repositories.
 | `run <agent-id>` | Trigger agent execution (`--payload '{...}'`) |
 | `logs <agent-id>` | View execution history (`--limit N`) |
 | `config <agent-id>` | View or update agent configuration (see below) |
+| `schedule <agent-id>` | Manage cron schedules (see below) |
+
+#### `datagen agents schedule`
+
+Manage cron schedules for an agent. With no flags, lists all schedules. Use flags to create, pause, resume, or delete schedules.
+
+```bash
+# List schedules for an agent
+datagen agents schedule <agent-id>
+
+# Create a daily 9am schedule in Eastern time
+datagen agents schedule <agent-id> --cron "0 9 * * *" --timezone "America/New_York" --name "daily-9am"
+
+# Pause a schedule
+datagen agents schedule <agent-id> --pause <schedule-id>
+
+# Resume a paused schedule
+datagen agents schedule <agent-id> --resume <schedule-id>
+
+# Delete a schedule
+datagen agents schedule <agent-id> --delete <schedule-id>
+```
+
+**Flags:**
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--cron` | string | Cron expression to create a schedule (e.g. `"0 9 * * *"`) |
+| `--timezone` | string | Timezone for the schedule (default: `UTC`) |
+| `--name` | string | Optional name for the schedule |
+| `--pause` | string | Pause a schedule by ID |
+| `--resume` | string | Resume a schedule by ID |
+| `--delete` | string | Delete a schedule by ID |
 
 #### `datagen agents config`
 
