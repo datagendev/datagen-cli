@@ -326,6 +326,51 @@ func (c *Client) UpdateAgentConfig(agentID string, req UpdateAgentConfigRequest)
 	return c.doRequest("POST", fmt.Sprintf("/api/agents/%s/config", agentID), req)
 }
 
+// ==========================================
+// Agent Schedule Methods
+// ==========================================
+
+// ListAgentSchedules returns schedules for an agent
+func (c *Client) ListAgentSchedules(agentID string) (*ListSchedulesResponse, error) {
+	body, err := c.doRequest("GET", fmt.Sprintf("/api/cli/agents/%s/schedules", agentID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ListSchedulesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// CreateAgentSchedule creates a cron schedule for an agent
+func (c *Client) CreateAgentSchedule(agentID string, req CreateScheduleRequest) (*CreateScheduleResponse, error) {
+	body, err := c.doRequest("POST", fmt.Sprintf("/api/cli/agents/%s/schedules", agentID), req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp CreateScheduleResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// UpdateAgentSchedule updates a schedule (pause/resume)
+func (c *Client) UpdateAgentSchedule(agentID, scheduleID string, updates map[string]interface{}) ([]byte, error) {
+	return c.doRequest("POST", fmt.Sprintf("/api/cli/agents/%s/schedules/%s", agentID, scheduleID), updates)
+}
+
+// DeleteAgentSchedule deletes a schedule
+func (c *Client) DeleteAgentSchedule(agentID, scheduleID string) error {
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/api/cli/agents/%s/schedules/%s", agentID, scheduleID), nil)
+	return err
+}
+
 // ListAgentExecutions returns executions for an agent
 func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutionsResponse, error) {
 	path := fmt.Sprintf("/api/cli/agents/%s/executions", agentID)

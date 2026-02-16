@@ -26,6 +26,14 @@ var (
 	configNotifySuccess   string
 	configNotifyFailure   string
 	configNotifyReply     string
+
+	// Schedule flags
+	scheduleCron     string
+	scheduleTimezone string
+	scheduleName     string
+	schedulePause    string
+	scheduleResume   string
+	scheduleDelete   string
 )
 
 var agentsCmd = &cobra.Command{
@@ -91,6 +99,25 @@ var agentsLogsCmd = &cobra.Command{
 	Run:   runAgentsLogs,
 }
 
+var agentsScheduleCmd = &cobra.Command{
+	Use:   "schedule <agent-id>",
+	Short: "Manage agent schedules",
+	Long: `Manage cron schedules for an agent.
+
+With no flags, lists all schedules for the agent.
+Use --cron to create a new schedule.
+Use --pause, --resume, or --delete to manage existing schedules.
+
+Examples:
+  datagen agents schedule <agent-id>
+  datagen agents schedule <agent-id> --cron "0 9 * * *" --timezone "America/New_York"
+  datagen agents schedule <agent-id> --pause <schedule-id>
+  datagen agents schedule <agent-id> --resume <schedule-id>
+  datagen agents schedule <agent-id> --delete <schedule-id>`,
+	Args: cobra.ExactArgs(1),
+	Run:  runAgentsSchedule,
+}
+
 var agentsConfigCmd = &cobra.Command{
 	Use:   "config <agent-id>",
 	Short: "View or update agent configuration",
@@ -129,6 +156,13 @@ func init() {
 	agentsConfigCmd.Flags().StringVar(&configNotifyFailure, "notify-failure", "", "Email on failure: true, false, or default")
 	agentsConfigCmd.Flags().StringVar(&configNotifyReply, "notify-reply", "", "Email reply-to-resume: true, false, or default")
 
+	agentsScheduleCmd.Flags().StringVar(&scheduleCron, "cron", "", "Cron expression to create a schedule (e.g. \"0 9 * * *\")")
+	agentsScheduleCmd.Flags().StringVar(&scheduleTimezone, "timezone", "UTC", "Timezone for the schedule (e.g. \"America/New_York\")")
+	agentsScheduleCmd.Flags().StringVar(&scheduleName, "name", "", "Optional name for the schedule")
+	agentsScheduleCmd.Flags().StringVar(&schedulePause, "pause", "", "Pause a schedule by ID")
+	agentsScheduleCmd.Flags().StringVar(&scheduleResume, "resume", "", "Resume a schedule by ID")
+	agentsScheduleCmd.Flags().StringVar(&scheduleDelete, "delete", "", "Delete a schedule by ID")
+
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsShowCmd)
 	agentsCmd.AddCommand(agentsDeployCmd)
@@ -136,6 +170,7 @@ func init() {
 	agentsCmd.AddCommand(agentsRunCmd)
 	agentsCmd.AddCommand(agentsLogsCmd)
 	agentsCmd.AddCommand(agentsConfigCmd)
+	agentsCmd.AddCommand(agentsScheduleCmd)
 }
 
 func runAgentsList(cmd *cobra.Command, args []string) {
@@ -197,7 +232,8 @@ func runAgentsList(cmd *cobra.Command, args []string) {
 				status = "missing"
 			}
 
-			fmt.Printf("  %s %s (%s)\n", statusIcon, a.AgentName, status)
+			typeLabel := formatAgentType(a.Type)
+			fmt.Printf("  %s %s [%s] (%s)\n", statusIcon, a.AgentName, typeLabel, status)
 			fmt.Printf("    ID: %s\n", a.ID)
 			if a.Description != "" {
 				desc := a.Description
@@ -235,11 +271,15 @@ func runAgentsShow(cmd *cobra.Command, args []string) {
 	fmt.Printf("🤖 Agent: %s\n", agent.Agent.AgentName)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Printf("ID:          %s\n", agent.Agent.ID)
+	fmt.Printf("Type:        %s\n", formatAgentType(agent.Agent.Type))
 	fmt.Printf("Repository:  %s\n", agent.Agent.Repo.FullName)
 	fmt.Printf("File:        %s\n", agent.Agent.FilePath)
 
 	if agent.Agent.Description != "" {
 		fmt.Printf("Description: %s\n", agent.Agent.Description)
+	}
+	if agent.Agent.EntryPrompt != "" {
+		fmt.Printf("Prompt:      %s\n", agent.Agent.EntryPrompt)
 	}
 
 	// Status
@@ -636,6 +676,120 @@ func formatBoolOverride(val *bool) string {
 		return "true (agent override)"
 	}
 	return "false (agent override)"
+}
+
+func formatAgentType(t string) string {
+	switch strings.ToUpper(t) {
+	case "SKILL":
+		return "skill"
+	case "COMMAND":
+		return "command"
+	case "AGENT":
+		return "agent"
+	default:
+		return "agent"
+	}
+}
+
+func runAgentsSchedule(cmd *cobra.Command, args []string) {
+	agentID := args[0]
+
+	client, err := getAPIClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Determine action based on flags
+	switch {
+	case scheduleCron != "":
+		// Create schedule
+		req := api.CreateScheduleRequest{
+			Cron:     scheduleCron,
+			Timezone: scheduleTimezone,
+			Name:     scheduleName,
+		}
+
+		resp, err := client.CreateAgentSchedule(agentID, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating schedule: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("Schedule created successfully!")
+		fmt.Println()
+		displayScheduleInfo(&resp.Schedule)
+
+	case schedulePause != "":
+		updates := map[string]interface{}{"isActive": false}
+		_, err := client.UpdateAgentSchedule(agentID, schedulePause, updates)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error pausing schedule: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Schedule %s paused.\n", schedulePause)
+
+	case scheduleResume != "":
+		updates := map[string]interface{}{"isActive": true}
+		_, err := client.UpdateAgentSchedule(agentID, scheduleResume, updates)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resuming schedule: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Schedule %s resumed.\n", scheduleResume)
+
+	case scheduleDelete != "":
+		err := client.DeleteAgentSchedule(agentID, scheduleDelete)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error deleting schedule: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Schedule %s deleted.\n", scheduleDelete)
+
+	default:
+		// List schedules
+		resp, err := client.ListAgentSchedules(agentID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(resp.Schedules) == 0 {
+			fmt.Println("\nNo schedules found for this agent.")
+			fmt.Println("Create one with: datagen agents schedule " + agentID + " --cron \"0 9 * * *\"")
+			return
+		}
+
+		fmt.Printf("\nSchedules (%d):\n\n", len(resp.Schedules))
+
+		for _, s := range resp.Schedules {
+			displayScheduleInfo(&s)
+			fmt.Println()
+		}
+	}
+}
+
+func displayScheduleInfo(s *api.ScheduleInfo) {
+	status := "Active"
+	if !s.IsActive {
+		status = "Paused"
+	}
+
+	name := s.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+
+	fmt.Printf("  %-8s %s\n", status, name)
+	fmt.Printf("           ID: %s\n", s.ID)
+	fmt.Printf("           Cron: %s (%s)\n", s.CronExpression, s.Timezone)
+	if s.NextRunAt != nil {
+		fmt.Printf("           Next: %s\n", s.NextRunAt.Format("2006-01-02 15:04:05"))
+	}
+	if s.LastRunAt != nil {
+		fmt.Printf("           Last: %s\n", s.LastRunAt.Format("2006-01-02 15:04:05"))
+	}
 }
 
 func getExecutionStatusIcon(status string) string {

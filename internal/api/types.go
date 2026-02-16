@@ -106,6 +106,7 @@ type Agent struct {
 	AgentName   string                 `json:"agentName"`
 	Description string                 `json:"description,omitempty"`
 	FilePath    string                 `json:"filePath"`
+	Type        string                 `json:"type,omitempty"`
 	IsDeployed  bool                   `json:"isDeployed"`
 	IsMissing   bool                   `json:"isMissing"`
 	Frontmatter map[string]interface{} `json:"frontmatter,omitempty"`
@@ -130,6 +131,7 @@ type AgentDetail struct {
 	AgentName   string                 `json:"agentName"`
 	Description string                 `json:"description,omitempty"`
 	FilePath    string                 `json:"filePath"`
+	Type        string                 `json:"type,omitempty"`
 	IsDeployed  bool                   `json:"isDeployed"`
 	IsMissing   bool                   `json:"isMissing"`
 	Frontmatter map[string]interface{} `json:"frontmatter,omitempty"`
@@ -277,6 +279,33 @@ type UpdateAgentConfigRequest struct {
 	Webhook       map[string]interface{} `json:"webhook,omitempty"`
 	Notifications map[string]interface{} `json:"notifications,omitempty"`
 	Recipients    *RecipientsUpdate      `json:"recipients,omitempty"`
+}
+
+// Schedule types
+
+type ScheduleInfo struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	CronExpression string     `json:"cronExpression"`
+	Timezone       string     `json:"timezone"`
+	IsActive       bool       `json:"isActive"`
+	NextRunAt      *time.Time `json:"nextRunAt"`
+	LastRunAt      *time.Time `json:"lastRunAt"`
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
+type ListSchedulesResponse struct {
+	Schedules []ScheduleInfo `json:"schedules"`
+}
+
+type CreateScheduleRequest struct {
+	Cron     string `json:"cron"`
+	Timezone string `json:"timezone,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+type CreateScheduleResponse struct {
+	Schedule ScheduleInfo `json:"schedule"`
 }
 
 // Error response
