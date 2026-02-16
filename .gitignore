@@ -33,6 +33,7 @@ test-project/
 example-output/
 app/
 .claude/
+!.claude/skills/
 datagen.toml
 .env.example
 .env

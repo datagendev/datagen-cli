@@ -16,10 +16,9 @@ for deploying Claude Code agents with DataGen MCP integration.
 Usage:
   datagen login      - Save your DataGen API key
   datagen mcp        - Configure DataGen MCP locally
-  datagen start      - Defaults-first project setup
-  datagen build      - Generate code from datagen.toml
-  datagen add        - Add a new service to existing project
-  datagen deploy     - Deploy to Railway`,
+  datagen github     - Manage GitHub connection
+  datagen agents     - Manage discovered agents
+  datagen secrets    - Manage secrets stored in DataGen`,
 }
 
 // Execute runs the root command
@@ -33,8 +32,7 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(mcpCmd)
-	rootCmd.AddCommand(startCmd)
-	rootCmd.AddCommand(buildCmd)
-	rootCmd.AddCommand(addCmd)
-	rootCmd.AddCommand(deployCmd)
+	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(agentsCmd)
+	rootCmd.AddCommand(secretsCmd)
 }
