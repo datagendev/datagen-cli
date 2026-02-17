@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DefaultBaseURL = "https://app.datagen.dev"
+	DefaultBaseURL = "https://api.datagen.dev"
 	DefaultTimeout = 30 * time.Second
 )
 
