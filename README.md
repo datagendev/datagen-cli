@@ -26,6 +26,30 @@ Installs the latest release to `/usr/local/bin` if writable, otherwise to `~/.lo
 curl -fsSL https://cli.datagen.dev/install.sh | env DATAGEN_VERSION=v0.2.0 sh
 ```
 
+### Windows (PowerShell)
+
+```powershell
+irm https://cli.datagen.dev/install.ps1 | iex
+```
+
+Mirror:
+
+```powershell
+irm https://raw.githubusercontent.com/datagendev/datagen-cli/main/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\datagen` and adds it to your user PATH.
+
+**Options:**
+- `$env:DATAGEN_VERSION` — pin a specific release (e.g. `v0.3.1`)
+- `$env:DATAGEN_INSTALL_DIR` — custom install directory
+
+```powershell
+$env:DATAGEN_VERSION="v0.3.1"; irm https://cli.datagen.dev/install.ps1 | iex
+```
+
+Or download manually from the [Releases page](https://github.com/datagendev/datagen-cli/releases) and place `datagen.exe` somewhere in your PATH.
+
 ### From Source
 
 ```bash
