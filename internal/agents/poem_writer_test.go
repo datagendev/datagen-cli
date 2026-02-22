@@ -1,14 +1,33 @@
 package agents
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestPoemWriterClassification(t *testing.T) {
 	t.Parallel()
 
-	// Parse the actual poem-writer.md file
-	agent, err := parseAgentFile("../../.claude/agents/poem-writer.md")
+	dir := t.TempDir()
+	agentFile := filepath.Join(dir, "poem-writer.md")
+
+	content := `---
+name: poem-writer
+description: An agent that writes poems using DataGen tools
+tools:
+  - mcp__datagen__searchtools
+  - mcp__datagen__executetool
+  - mcp__datagen__gettooldetails
+---
+
+You are a poem-writing agent. Use the DataGen tools to search for inspiration and write beautiful poems.
+`
+	if err := os.WriteFile(agentFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test fixture: %v", err)
+	}
+
+	agent, err := parseAgentFile(agentFile)
 	if err != nil {
 		t.Fatalf("Failed to parse poem-writer.md: %v", err)
 	}

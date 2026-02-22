@@ -389,7 +389,7 @@ func runGitHubStatus(cmd *cobra.Command, args []string) {
 		}
 
 		fmt.Printf("  %s %s (%s)\n", statusIcon, install.AccountLogin, install.AccountType)
-		fmt.Printf("    Installation ID: %s\n", install.InstallationID)
+		fmt.Printf("    Installation ID: %d\n", install.InstallationID)
 		fmt.Printf("    Active: %v\n", install.IsActive)
 	}
 
