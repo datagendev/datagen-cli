@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/datagendev/datagen-cli/internal/auth"
@@ -23,31 +24,112 @@ var (
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Save your DataGen API key",
-	Long: `Save your DataGen API key as an environment variable.
+	Short: "Log in to DataGen",
+	Long: `Log in to DataGen using your browser (OAuth PKCE flow).
 
-Note: A CLI cannot modify your current shell's environment. This command writes
-to your shell profile so new terminals inherit DATAGEN_API_KEY.`,
+Opens your browser to authenticate and saves your credentials locally.
+New terminals will have DATAGEN_API_KEY set automatically.
+
+For non-interactive or CI environments, use --api-key to provide a key directly:
+
+  datagen login --api-key <your-key>`,
 	Run: runLogin,
 }
 
 func init() {
-	loginCmd.Flags().StringVar(&loginAPIKey, "api-key", "", "DataGen API key (if empty, prompts securely)")
+	loginCmd.Flags().StringVar(&loginAPIKey, "api-key", "", "DataGen API key (skips browser login)")
 	loginCmd.Flags().StringVar(&loginShell, "shell", "", "Shell type (bash, zsh, fish, powershell)")
 	loginCmd.Flags().StringVar(&loginProfile, "profile", "", "Shell profile file to update (defaults based on shell)")
 	loginCmd.Flags().StringVar(&loginEnvVar, "env", "DATAGEN_API_KEY", "Environment variable name to set")
 	loginCmd.Flags().BoolVarP(&loginYes, "yes", "y", false, "Skip confirmation prompts")
-	loginCmd.Flags().BoolVar(&loginPrintOnly, "print", false, "Print the command to set the env var (does not write files)")
+	loginCmd.Flags().BoolVar(&loginPrintOnly, "print", false, "Print the export command (does not write files)")
 }
 
 func runLogin(cmd *cobra.Command, args []string) {
+	// If --api-key was explicitly provided, use the direct key flow.
+	if cmd.Flags().Changed("api-key") {
+		runLoginWithKey(loginAPIKey)
+		return
+	}
+
+	// Default: browser-based OAuth PKCE flow.
+	runOAuthLogin()
+}
+
+func runOAuthLogin() {
+	webBase := auth.WebBaseURL()
+
+	pkce, err := auth.GeneratePKCE()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	port, codeCh, stop, err := auth.StartCallbackServer(pkce.State)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer stop()
+
+	redirectURI := fmt.Sprintf("http://localhost:%d/callback", port)
+	authorizeURL := auth.BuildAuthorizeURL(webBase, redirectURI, pkce)
+
+	fmt.Println("Opening your browser to log in to DataGen...")
+	fmt.Printf("\n  %s\n\n", authorizeURL)
+	fmt.Println("If the browser doesn't open, copy the URL above into your browser.")
+	fmt.Println("Waiting for login... (Ctrl+C to cancel)")
+
+	if err := openBrowser(authorizeURL); err != nil {
+		// Non-fatal: the user can open the URL manually.
+		_ = err
+	}
+
+	// Wait for callback with a 5-minute timeout.
+	var code string
+	select {
+	case result := <-codeCh:
+		if strings.HasPrefix(result, "error:") {
+			fmt.Fprintf(os.Stderr, "\nError: login failed — %s\n", strings.TrimPrefix(result, "error:"))
+			os.Exit(1)
+		}
+		code = result
+	case <-time.After(5 * time.Minute):
+		fmt.Fprintln(os.Stderr, "\nError: timed out waiting for browser login (5 minutes)")
+		os.Exit(1)
+	}
+
+	fmt.Println("\nExchanging authorization code for tokens...")
+
+	serverBase := auth.ServerBaseURL()
+	tokens, err := auth.ExchangeCode(serverBase, redirectURI, code, pkce)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Persist both tokens to ~/.config/datagen/credentials.json.
+	if err := auth.SaveTokens(auth.TokenStore{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not save credentials file: %v\n", err)
+	}
+
+	// Save access token as DATAGEN_API_KEY to the shell profile so all CLI
+	// commands pick it up automatically in new terminals.
+	loginYes = true // user authenticated via browser; skip redundant confirmation
+	runLoginWithKey(tokens.AccessToken)
+}
+
+func runLoginWithKey(apiKey string) {
 	envVar := strings.TrimSpace(loginEnvVar)
 	if envVar == "" {
 		fmt.Fprintln(os.Stderr, "Error: --env cannot be empty")
 		os.Exit(1)
 	}
 
-	apiKey := strings.TrimSpace(loginAPIKey)
+	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		if err := survey.AskOne(&survey.Password{
 			Message: "Enter your DataGen API key:",
