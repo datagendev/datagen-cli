@@ -108,7 +108,7 @@ func runOAuthLogin() {
 		os.Exit(1)
 	}
 
-	// Persist both tokens to ~/.config/datagen/credentials.json.
+	// Persist OAuth tokens to ~/.config/datagen/credentials.json.
 	if err := auth.SaveTokens(auth.TokenStore{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
@@ -116,10 +116,17 @@ func runOAuthLogin() {
 		fmt.Fprintf(os.Stderr, "Warning: could not save credentials file: %v\n", err)
 	}
 
-	// Save access token as DATAGEN_API_KEY to the shell profile so all CLI
-	// commands pick it up automatically in new terminals.
+	// Use the OAuth token to fetch the user's real API key from the server.
+	fmt.Println("Fetching API key...")
+	apiKey, err := auth.FetchApiKey(serverBase, tokens.AccessToken)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch API key, using access token instead: %v\n", err)
+		apiKey = tokens.AccessToken
+	}
+
+	// Save API key to shell profile so all CLI commands pick it up automatically.
 	loginYes = true // user authenticated via browser; skip redundant confirmation
-	runLoginWithKey(tokens.AccessToken)
+	runLoginWithKey(apiKey)
 }
 
 func runLoginWithKey(apiKey string) {

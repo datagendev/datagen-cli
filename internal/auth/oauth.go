@@ -208,3 +208,40 @@ func ExchangeCode(serverBaseURL, redirectURI, code string, pkce *PKCEParams) (*O
 
 	return &OAuthTokens{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
+
+// FetchApiKey uses the OAuth access token to retrieve the user's API key
+// from the server. This is needed because /apps/ endpoints authenticate
+// via X-API-Key (hashed lookup), not OAuth tokens.
+func FetchApiKey(serverBaseURL, accessToken string) (string, error) {
+	req, err := http.NewRequest("GET", serverBaseURL+"/api/oauth/api-key", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("api-key request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read api-key response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("api-key request failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		ApiKey string `json:"api_key"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse api-key response: %w", err)
+	}
+	if result.ApiKey == "" {
+		return "", fmt.Errorf("no api_key in response")
+	}
+	return result.ApiKey, nil
+}
