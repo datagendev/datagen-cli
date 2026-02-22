@@ -23,6 +23,10 @@ const (
 	// DefaultWebBaseURL is the base URL of the DataGen web application.
 	// Overridable via DATAGEN_WEB_BASE_URL.
 	DefaultWebBaseURL = "https://datagen.dev"
+
+	// DefaultServerBaseURL is the base URL of the DataGen API server.
+	// Overridable via DATAGEN_SERVER_URL.
+	DefaultServerBaseURL = "https://api.datagen.dev"
 )
 
 // PKCEParams holds the generated PKCE verifier, challenge, and CSRF state.
@@ -44,6 +48,14 @@ func WebBaseURL() string {
 		return strings.TrimRight(u, "/")
 	}
 	return DefaultWebBaseURL
+}
+
+// ServerBaseURL returns the configured API server base URL.
+func ServerBaseURL() string {
+	if u := os.Getenv("DATAGEN_SERVER_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	return DefaultServerBaseURL
 }
 
 // GeneratePKCE generates a PKCE code verifier, its S256 challenge, and a CSRF state value.
@@ -79,6 +91,7 @@ func BuildAuthorizeURL(webBaseURL, redirectURI string, pkce *PKCEParams) string 
 	params.Set("client_id", ClientID)
 	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
+	params.Set("scope", "read:user deployment:read deployment:run")
 	params.Set("state", pkce.State)
 	params.Set("code_challenge", pkce.Challenge)
 	params.Set("code_challenge_method", "S256")
@@ -137,9 +150,9 @@ func StartCallbackServer(expectedState string) (port int, codeCh <-chan string, 
 }
 
 // ExchangeCode exchanges an authorization code for access and refresh tokens.
-// The /api/oauth/access_token endpoint returns application/x-www-form-urlencoded.
+// serverBaseURL should point to the Wasp API server (not the frontend).
 // Falls back to JSON parsing if the content-type differs.
-func ExchangeCode(webBaseURL, redirectURI, code string, pkce *PKCEParams) (*OAuthTokens, error) {
+func ExchangeCode(serverBaseURL, redirectURI, code string, pkce *PKCEParams) (*OAuthTokens, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -148,7 +161,7 @@ func ExchangeCode(webBaseURL, redirectURI, code string, pkce *PKCEParams) (*OAut
 	form.Set("code_verifier", pkce.Verifier)
 
 	resp, err := http.Post(
-		webBaseURL+"/api/oauth/access_token",
+		serverBaseURL+"/api/oauth/access_token",
 		"application/x-www-form-urlencoded",
 		strings.NewReader(form.Encode()),
 	)

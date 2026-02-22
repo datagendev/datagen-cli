@@ -101,7 +101,8 @@ func runOAuthLogin() {
 
 	fmt.Println("\nExchanging authorization code for tokens...")
 
-	tokens, err := auth.ExchangeCode(webBase, redirectURI, code, pkce)
+	serverBase := auth.ServerBaseURL()
+	tokens, err := auth.ExchangeCode(serverBase, redirectURI, code, pkce)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
