@@ -111,7 +111,21 @@ Re-sync agents from a repo:
 datagen github sync <repo-id>
 ```
 
-### 4. Deploy an Agent
+### 4. Deploy a Custom Tool
+
+Deploy a Python workflow as a reusable custom tool:
+
+```bash
+datagen tools deploy my_tool --file ./tool.py
+datagen tools list
+datagen tools show <tool-uuid>
+datagen tools update <tool-uuid> --file ./tool.py --description "Updated tool"
+datagen tools run <tool-uuid> --input '{"url":"https://example.com"}'
+```
+
+Use `datagen secrets set KEY=VALUE` first if the tool requires secrets.
+
+### 5. Deploy an Agent
 
 List discovered agents:
 
@@ -133,7 +147,7 @@ Deploy — creates a webhook endpoint for the agent:
 datagen agents deploy <agent-id>
 ```
 
-### 5. Run and Monitor
+### 6. Run and Monitor
 
 Trigger an agent execution:
 
@@ -149,7 +163,7 @@ datagen agents logs <agent-id>
 datagen agents logs <agent-id> --limit 20
 ```
 
-### 6. Configure
+### 7. Configure
 
 View or update agent configuration:
 
@@ -184,7 +198,7 @@ datagen agents config <agent-id> --notify-success true --notify-failure true
 | `--notify-failure` | Email on failure: `true`, `false`, or `default` |
 | `--notify-reply` | Email reply-to-resume: `true`, `false`, or `default` |
 
-### 7. Schedule
+### 8. Schedule
 
 Set up cron schedules for automated runs:
 
@@ -201,7 +215,7 @@ datagen agents schedule <agent-id> --resume <schedule-id>
 datagen agents schedule <agent-id> --delete <schedule-id>
 ```
 
-### 8. Manage Secrets
+### 9. Manage Secrets
 
 Store API keys and secrets that agents can access at runtime:
 
@@ -225,6 +239,11 @@ datagen agents undeploy <agent-id>
 |---------|-------------|
 | `datagen login` | Save your DataGen API key |
 | `datagen mcp` | Configure DataGen MCP in local tools |
+| `datagen tools list` | List custom tools |
+| `datagen tools show` | Show custom tool details |
+| `datagen tools deploy` | Deploy a custom tool from Python code |
+| `datagen tools update` | Update a deployed custom tool |
+| `datagen tools run` | Validate and run a custom tool |
 | `datagen github connect` | Install GitHub App and connect repos |
 | `datagen github repos` | List available repositories |
 | `datagen github connected` | List connected repositories |

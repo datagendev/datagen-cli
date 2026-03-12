@@ -390,3 +390,103 @@ func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutions
 
 	return &resp, nil
 }
+
+// ==========================================
+// Custom Tool Methods
+// ==========================================
+
+// ListCustomTools returns the user's custom tools.
+func (c *Client) ListCustomTools(limit int) (*ListCustomToolsResponse, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	body, err := c.doRequest("GET", fmt.Sprintf("/mcp/apps?limit=%d", limit), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ListCustomToolsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// GetCustomTool returns details of a specific custom tool.
+func (c *Client) GetCustomTool(toolUUID string) (*GetCustomToolResponse, error) {
+	body, err := c.doRequest("POST", fmt.Sprintf("/mcp/apps/%s", toolUUID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp GetCustomToolResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// DeployCustomTool creates a new custom tool deployment.
+func (c *Client) DeployCustomTool(req DeployCustomToolRequest) (*DeployCustomToolResponse, error) {
+	body, err := c.doRequest("POST", "/mcp/deployments/standalone", req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp DeployCustomToolResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// UpdateCustomTool updates an existing custom tool deployment.
+func (c *Client) UpdateCustomTool(toolUUID string, req UpdateCustomToolRequest) (*UpdateCustomToolResponse, error) {
+	body, err := c.doRequest("PUT", fmt.Sprintf("/mcp/deployment/%s", toolUUID), req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp UpdateCustomToolResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// ValidateCustomTool validates secret and MCP requirements before a run.
+func (c *Client) ValidateCustomTool(toolUUID string) (*ValidateCustomToolResponse, error) {
+	body, err := c.doRequest("POST", fmt.Sprintf("/mcp/apps/%s/validate-auth", toolUUID), map[string]interface{}{})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ValidateCustomToolResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// RunCustomTool triggers an asynchronous custom tool run.
+func (c *Client) RunCustomTool(toolUUID string, inputVars map[string]interface{}) (*RunCustomToolResponse, error) {
+	body, err := c.doRequest("POST", fmt.Sprintf("/mcp/apps/%s/async", toolUUID), RunCustomToolRequest{
+		InputVars: inputVars,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var resp RunCustomToolResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}

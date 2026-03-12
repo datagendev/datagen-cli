@@ -16,6 +16,8 @@ discovers Claude Code agents, and deploys them as live endpoints.
 Workflow:
   datagen login              Save your DataGen API key
   datagen mcp                Configure DataGen MCP locally
+  datagen tools list         List deployed custom tools
+  datagen tools deploy       Deploy a Python custom tool
   datagen github connect     Install the GitHub App and connect repos
   datagen agents list        List discovered agents
   datagen agents deploy      Deploy an agent as a webhook endpoint
@@ -36,6 +38,7 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(toolsCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(agentsCmd)
 	rootCmd.AddCommand(secretsCmd)
