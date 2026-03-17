@@ -371,6 +371,36 @@ func (c *Client) DeleteAgentSchedule(agentID, scheduleID string) error {
 	return err
 }
 
+// GetAgentExecutionOutput returns the full output for a specific execution
+func (c *Client) GetAgentExecutionOutput(agentID, executionID string) (*ExecutionOutputResponse, error) {
+	body, err := c.doRequest("GET", fmt.Sprintf("/api/cli/agents/%s/executions/%s/output", agentID, executionID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ExecutionOutputResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// GetAgentExecutionOutputBySession returns the output for the latest execution matching a session ID
+func (c *Client) GetAgentExecutionOutputBySession(agentID, sessionID string) (*ExecutionOutputResponse, error) {
+	body, err := c.doRequest("GET", fmt.Sprintf("/api/cli/agents/%s/executions/by-session/output?session=%s", agentID, sessionID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ExecutionOutputResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
 // ListAgentExecutions returns executions for an agent
 func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutionsResponse, error) {
 	path := fmt.Sprintf("/api/cli/agents/%s/executions", agentID)

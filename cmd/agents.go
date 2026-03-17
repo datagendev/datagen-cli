@@ -28,6 +28,11 @@ var (
 	configNotifyFailure   string
 	configNotifyReply     string
 
+	// Output flags
+	outputExecID    string
+	outputSessionID string
+	outputJSON      bool
+
 	// Schedule flags
 	scheduleCron     string
 	scheduleTimezone string
@@ -124,6 +129,23 @@ Examples:
 	Run:  runAgentsSchedule,
 }
 
+var agentsOutputCmd = &cobra.Command{
+	Use:   "output <agent-id>",
+	Short: "Show agent execution output",
+	Long: `Show the final output/result of an agent execution.
+
+By default, shows the output of the most recent execution.
+Use --execution to specify an execution ID, or --session to look up by SDK session ID.
+
+Examples:
+  datagen agents output <agent-id>
+  datagen agents output <agent-id> --execution <execution-id>
+  datagen agents output <agent-id> --session <sdk-session-id>
+  datagen agents output <agent-id> --json`,
+	Args: cobra.ExactArgs(1),
+	Run:  runAgentsOutput,
+}
+
 var agentsConfigCmd = &cobra.Command{
 	Use:   "config <agent-id>",
 	Short: "View or update agent configuration",
@@ -153,6 +175,10 @@ func init() {
 
 	agentsLogsCmd.Flags().IntVar(&agentsExecLimit, "limit", 10, "Maximum number of executions to show")
 
+	agentsOutputCmd.Flags().StringVar(&outputExecID, "execution", "", "Execution ID to show output for")
+	agentsOutputCmd.Flags().StringVar(&outputSessionID, "session", "", "SDK session ID to look up")
+	agentsOutputCmd.Flags().BoolVar(&outputJSON, "json", false, "Output raw result as JSON")
+
 	agentsConfigCmd.Flags().StringVar(&configSetPrompt, "set-prompt", "", "Set the entry prompt text")
 	agentsConfigCmd.Flags().BoolVar(&configClearPrompt, "clear-prompt", false, "Clear the entry prompt")
 	agentsConfigCmd.Flags().StringVar(&configSecrets, "secrets", "", "Comma-separated secret names for webhook")
@@ -176,6 +202,7 @@ func init() {
 	agentsCmd.AddCommand(agentsUndeployCmd)
 	agentsCmd.AddCommand(agentsRunCmd)
 	agentsCmd.AddCommand(agentsLogsCmd)
+	agentsCmd.AddCommand(agentsOutputCmd)
 	agentsCmd.AddCommand(agentsConfigCmd)
 	agentsCmd.AddCommand(agentsScheduleCmd)
 }
@@ -482,6 +509,9 @@ func runAgentsLogs(cmd *cobra.Command, args []string) {
 
 		fmt.Printf("%s %s\n", statusIcon, exec.ID)
 		fmt.Printf("   Status: %s%s\n", exec.Status, duration)
+		if exec.SdkSessionID != nil && *exec.SdkSessionID != "" {
+			fmt.Printf("   Session: %s\n", *exec.SdkSessionID)
+		}
 		if exec.StartedAt != nil {
 			fmt.Printf("   Started: %s\n", exec.StartedAt.Format("2006-01-02 15:04:05"))
 		} else {
@@ -511,6 +541,102 @@ func runAgentsLogs(cmd *cobra.Command, args []string) {
 
 		fmt.Println()
 	}
+}
+
+func runAgentsOutput(cmd *cobra.Command, args []string) {
+	agentID := args[0]
+
+	client, err := getAPIClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var output *api.ExecutionOutputResponse
+
+	switch {
+	case outputSessionID != "":
+		// Look up by session ID
+		fmt.Printf("🔍 Looking up output by session: %s\n", outputSessionID)
+		output, err = client.GetAgentExecutionOutputBySession(agentID, outputSessionID)
+
+	case outputExecID != "":
+		// Look up by execution ID
+		fmt.Printf("🔍 Fetching output for execution: %s\n", outputExecID)
+		output, err = client.GetAgentExecutionOutput(agentID, outputExecID)
+
+	default:
+		// Get latest execution, then fetch its output
+		fmt.Println("🔍 Fetching latest execution output...")
+		execResp, execErr := client.ListAgentExecutions(agentID, 1)
+		if execErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", execErr)
+			os.Exit(1)
+		}
+		if len(execResp.Executions) == 0 {
+			fmt.Println("\nNo executions found for this agent.")
+			fmt.Println("Run the agent first with: datagen agents run " + agentID)
+			return
+		}
+		latestExec := execResp.Executions[0]
+		output, err = client.GetAgentExecutionOutput(agentID, latestExec.ID)
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// JSON mode: dump the raw result
+	if outputJSON {
+		data, _ := json.MarshalIndent(output.Result, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	// Display formatted output
+	label := typeLabel(strings.ToUpper(output.Type))
+	fmt.Println()
+	fmt.Printf("%s %s: %s\n", typeIcon(strings.ToUpper(output.Type)), capitalize(label), output.AgentName)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("Execution: %s\n", output.ExecutionID)
+	fmt.Printf("Status:    %s %s\n", getExecutionStatusIcon(output.Status), output.Status)
+
+	if output.SdkSessionID != nil && *output.SdkSessionID != "" {
+		fmt.Printf("Session:   %s\n", *output.SdkSessionID)
+	}
+
+	if output.StartedAt != nil {
+		fmt.Printf("Started:   %s\n", output.StartedAt.Format("2006-01-02 15:04:05"))
+	}
+	if output.CompletedAt != nil {
+		fmt.Printf("Completed: %s\n", output.CompletedAt.Format("2006-01-02 15:04:05"))
+	}
+	if output.DurationMs != nil {
+		fmt.Printf("Duration:  %dms\n", *output.DurationMs)
+	}
+
+	if output.AgentBranch != "" {
+		fmt.Printf("Branch:    %s\n", output.AgentBranch)
+	}
+	if output.PrUrl != "" {
+		fmt.Printf("PR:        %s\n", output.PrUrl)
+	}
+
+	if output.ErrorMessage != "" {
+		fmt.Println()
+		fmt.Println("Error:")
+		fmt.Printf("  %s\n", output.ErrorMessage)
+	}
+
+	if output.Result != nil && len(output.Result) > 0 {
+		fmt.Println()
+		fmt.Println("Result:")
+		data, _ := json.MarshalIndent(output.Result, "  ", "  ")
+		fmt.Printf("  %s\n", string(data))
+	}
+
+	fmt.Println()
 }
 
 func runAgentsConfig(cmd *cobra.Command, args []string) {

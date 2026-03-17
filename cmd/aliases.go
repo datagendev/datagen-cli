@@ -57,6 +57,7 @@ func init() {
 	skillsCmd.AddCommand(&cobra.Command{Use: "undeploy <id>", Short: "Undeploy a skill", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsUndeploy)})
 	skillsCmd.AddCommand(&cobra.Command{Use: "run <id>", Short: "Trigger skill execution", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsRun)})
 	skillsCmd.AddCommand(&cobra.Command{Use: "logs <id>", Short: "View skill execution logs", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsLogs)})
+	skillsCmd.AddCommand(&cobra.Command{Use: "output <id>", Short: "Show skill execution output", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsOutput)})
 	skillsCmd.AddCommand(&cobra.Command{Use: "config <id>", Short: "View or update skill configuration", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsConfig)})
 	skillsCmd.AddCommand(&cobra.Command{Use: "schedule <id>", Short: "Manage skill schedules", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsSchedule)})
 
@@ -75,6 +76,7 @@ func init() {
 	commandsCmd.AddCommand(&cobra.Command{Use: "undeploy <id>", Short: "Undeploy a command", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsUndeploy)})
 	commandsCmd.AddCommand(&cobra.Command{Use: "run <id>", Short: "Trigger command execution", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsRun)})
 	commandsCmd.AddCommand(&cobra.Command{Use: "logs <id>", Short: "View command execution logs", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsLogs)})
+	commandsCmd.AddCommand(&cobra.Command{Use: "output <id>", Short: "Show command execution output", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsOutput)})
 	commandsCmd.AddCommand(&cobra.Command{Use: "config <id>", Short: "View or update command configuration", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsConfig)})
 	commandsCmd.AddCommand(&cobra.Command{Use: "schedule <id>", Short: "Manage command schedules", Args: cobra.ExactArgs(1), Run: makeTypedRunFunc(runAgentsSchedule)})
 }

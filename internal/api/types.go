@@ -193,6 +193,26 @@ type Execution struct {
 	CreatedAt    time.Time              `json:"createdAt"`
 	StartedAt    *time.Time             `json:"startedAt,omitempty"`
 	CompletedAt  *time.Time             `json:"completedAt,omitempty"`
+	SdkSessionID *string                `json:"sdkSessionId,omitempty"`
+	PrUrl        string                 `json:"prUrl,omitempty"`
+	DurationMs   *int                   `json:"durationMs,omitempty"`
+}
+
+type ExecutionOutputResponse struct {
+	ExecutionID  string                 `json:"executionId"`
+	AgentID      string                 `json:"agentId"`
+	AgentName    string                 `json:"agentName"`
+	Type         string                 `json:"type,omitempty"`
+	Status       string                 `json:"status"`
+	SdkSessionID *string                `json:"sdkSessionId,omitempty"`
+	Result       map[string]interface{} `json:"result,omitempty"`
+	ErrorMessage string                 `json:"errorMessage,omitempty"`
+	Payload      map[string]interface{} `json:"payload,omitempty"`
+	PrUrl        string                 `json:"prUrl,omitempty"`
+	AgentBranch  string                 `json:"agentBranch,omitempty"`
+	StartedAt    *time.Time             `json:"startedAt,omitempty"`
+	CompletedAt  *time.Time             `json:"completedAt,omitempty"`
+	DurationMs   *int                   `json:"durationMs,omitempty"`
 }
 
 type ListExecutionsResponse struct {
