@@ -308,6 +308,26 @@ type CreateScheduleResponse struct {
 	Schedule ScheduleInfo `json:"schedule"`
 }
 
+// Repo creation/disconnection types
+
+type CreateRepoRequest struct {
+	Name        string `json:"name"`
+	Org         string `json:"org,omitempty"`
+	Private     bool   `json:"private"`
+	Description string `json:"description,omitempty"`
+}
+
+type CreateRepoResponse struct {
+	Success          bool          `json:"success"`
+	Repo             ConnectedRepo `json:"repo"`
+	AgentsDiscovered int           `json:"agentsDiscovered"`
+}
+
+type DisconnectRepoResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 // Error response
 
 type ErrorResponse struct {

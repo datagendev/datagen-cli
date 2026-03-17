@@ -180,6 +180,36 @@ func (c *Client) SyncRepo(repoID string) (*SyncRepoResponse, error) {
 	return &resp, nil
 }
 
+// CreateRepo creates a new GitHub repo and connects it to DataGen
+func (c *Client) CreateRepo(req CreateRepoRequest) (*CreateRepoResponse, error) {
+	body, err := c.doRequest("POST", "/api/cli/github/repos/create", req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp CreateRepoResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// DisconnectRepo disconnects a repo from DataGen
+func (c *Client) DisconnectRepo(repoID string) (*DisconnectRepoResponse, error) {
+	body, err := c.doRequest("DELETE", fmt.Sprintf("/api/cli/github/repos/%s/connect", repoID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp DisconnectRepoResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
 // ==========================================
 // Agent Methods
 // ==========================================
