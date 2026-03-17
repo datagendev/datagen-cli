@@ -12,6 +12,7 @@ import (
 
 var (
 	agentsListRepo     string
+	agentsListType     string
 	agentsDeployedOnly bool
 	agentsRunPayload   string
 	agentsExecLimit    int
@@ -38,11 +39,16 @@ var (
 
 var agentsCmd = &cobra.Command{
 	Use:   "agents",
-	Short: "Manage discovered agents",
-	Long: `Manage agents discovered from your connected GitHub repositories.
+	Short: "Manage discovered agents, skills, and commands",
+	Long: `Manage agents, skills, and commands discovered from your connected GitHub repositories.
 
-Agents are markdown files in .claude/agents/ directories that define
-AI agent behavior for the DataGen platform.`,
+These are markdown files in .claude/ directories that define AI behavior
+for the DataGen platform:
+  - Agents:   .claude/agents/*.md
+  - Skills:   .claude/skills/*.md  (user-invocable slash commands)
+  - Commands: .claude/commands/*.md (custom slash commands)
+
+Use --type to filter by type, or use 'datagen skills' / 'datagen commands' shortcuts.`,
 }
 
 var agentsListCmd = &cobra.Command{
@@ -140,6 +146,7 @@ Examples:
 
 func init() {
 	agentsListCmd.Flags().StringVar(&agentsListRepo, "repo", "", "Filter by repository (owner/repo)")
+	agentsListCmd.Flags().StringVar(&agentsListType, "type", "", "Filter by type: agent, skill, or command")
 	agentsListCmd.Flags().BoolVar(&agentsDeployedOnly, "deployed", false, "Show only deployed agents")
 
 	agentsRunCmd.Flags().StringVar(&agentsRunPayload, "payload", "{}", "JSON payload to send to the agent")
@@ -180,7 +187,12 @@ func runAgentsList(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("🤖 Fetching agents...")
+	filterType := strings.ToUpper(agentsListType)
+	if filterType != "" {
+		fmt.Printf("%s Fetching %s...\n", typeIcon(filterType), typeLabelPlural(filterType))
+	} else {
+		fmt.Println("🤖 Fetching agents, skills, and commands...")
+	}
 
 	resp, err := client.ListAgents()
 	if err != nil {
@@ -188,7 +200,7 @@ func runAgentsList(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Filter agents
+	// Filter
 	var filtered []api.Agent
 	for _, a := range resp.Agents {
 		if agentsListRepo != "" && a.Repo.FullName != agentsListRepo {
@@ -197,57 +209,64 @@ func runAgentsList(cmd *cobra.Command, args []string) {
 		if agentsDeployedOnly && !a.IsDeployed {
 			continue
 		}
+		if filterType != "" && strings.ToUpper(a.Type) != filterType {
+			continue
+		}
 		filtered = append(filtered, a)
 	}
 
+	itemLabel := "items"
+	if filterType != "" {
+		itemLabel = typeLabelPlural(filterType)
+	}
+
 	if len(filtered) == 0 {
-		fmt.Println("\nNo agents found.")
-		if agentsListRepo != "" || agentsDeployedOnly {
-			fmt.Println("Try removing filters to see all agents.")
+		fmt.Printf("\nNo %s found.\n", itemLabel)
+		if agentsListRepo != "" || agentsDeployedOnly || filterType != "" {
+			fmt.Println("Try removing filters to see all items.")
 		} else {
 			fmt.Println("Connect a repository with 'datagen github connect-repo <owner/repo>'")
 		}
 		return
 	}
 
-	fmt.Printf("\n📋 Agents (%d):\n\n", len(filtered))
-
-	// Group by repo
-	byRepo := make(map[string][]api.Agent)
-	for _, a := range filtered {
-		byRepo[a.Repo.FullName] = append(byRepo[a.Repo.FullName], a)
-	}
-
-	for repo, agents := range byRepo {
-		fmt.Printf("📁 %s\n", repo)
-		for _, a := range agents {
-			statusIcon := "⚪"
-			status := "not deployed"
-			if a.IsDeployed {
-				statusIcon = "🟢"
-				status = "deployed"
-			}
-			if a.IsMissing {
-				statusIcon = "🔴"
-				status = "missing"
-			}
-
-			typeLabel := formatAgentType(a.Type)
-			fmt.Printf("  %s %s [%s] (%s)\n", statusIcon, a.AgentName, typeLabel, status)
-			fmt.Printf("    ID: %s\n", a.ID)
-			if a.Description != "" {
-				desc := a.Description
-				if len(desc) > 60 {
-					desc = desc[:57] + "..."
+	if filterType != "" {
+		// Flat by-repo grouping with type-specific header
+		fmt.Printf("\n📋 %s (%d):\n\n", capitalize(itemLabel), len(filtered))
+		printAgentsByRepo(filtered)
+	} else {
+		// Group by type, then by repo
+		typeOrder := []string{"AGENT", "SKILL", "COMMAND"}
+		for _, t := range typeOrder {
+			var group []api.Agent
+			for _, a := range filtered {
+				if strings.ToUpper(a.Type) == t {
+					group = append(group, a)
 				}
-				fmt.Printf("    %s\n", desc)
+			}
+			if len(group) == 0 {
+				continue
+			}
+			fmt.Printf("\n%s %s (%d):\n\n", typeIcon(t), capitalize(typeLabelPlural(t)), len(group))
+			printAgentsByRepo(group)
+		}
+
+		// Items with unknown/empty type
+		var other []api.Agent
+		for _, a := range filtered {
+			t := strings.ToUpper(a.Type)
+			if t != "AGENT" && t != "SKILL" && t != "COMMAND" {
+				other = append(other, a)
 			}
 		}
-		fmt.Println()
+		if len(other) > 0 {
+			fmt.Printf("\n🤖 Other (%d):\n\n", len(other))
+			printAgentsByRepo(other)
+		}
 	}
 
 	fmt.Println("Use 'datagen agents show <agent-id>' for details.")
-	fmt.Println("Use 'datagen agents deploy <agent-id>' to deploy an agent.")
+	fmt.Println("Use 'datagen agents deploy <agent-id>' to deploy.")
 }
 
 func runAgentsShow(cmd *cobra.Command, args []string) {
@@ -259,7 +278,7 @@ func runAgentsShow(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("🔍 Fetching agent: %s\n", agentID)
+	fmt.Printf("🔍 Fetching details: %s\n", agentID)
 
 	agent, err := client.GetAgent(agentID)
 	if err != nil {
@@ -267,8 +286,11 @@ func runAgentsShow(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	t := strings.ToUpper(agent.Agent.Type)
+	label := typeLabel(t)
+
 	fmt.Println()
-	fmt.Printf("🤖 Agent: %s\n", agent.Agent.AgentName)
+	fmt.Printf("%s %s: %s\n", typeIcon(t), capitalize(label), agent.Agent.AgentName)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Printf("ID:          %s\n", agent.Agent.ID)
 	fmt.Printf("Type:        %s\n", formatAgentType(agent.Agent.Type))
@@ -345,7 +367,9 @@ func runAgentsDeploy(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("🚀 Deploying agent: %s\n", agentID)
+	label := resolveAgentTypeLabel(client, agentID)
+
+	fmt.Printf("🚀 Deploying %s: %s\n", label, agentID)
 
 	resp, err := client.DeployAgent(agentID, "", nil)
 	if err != nil {
@@ -354,7 +378,7 @@ func runAgentsDeploy(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
-	fmt.Println("✅ Agent deployed successfully!")
+	fmt.Printf("✅ %s deployed successfully!\n", capitalize(label))
 	fmt.Println()
 	fmt.Println("🔗 Webhook URL:")
 	fmt.Printf("   %s\n", resp.WebhookUrl)
@@ -376,7 +400,9 @@ func runAgentsUndeploy(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("🛑 Undeploying agent: %s\n", agentID)
+	label := resolveAgentTypeLabel(client, agentID)
+
+	fmt.Printf("🛑 Undeploying %s: %s\n", label, agentID)
 
 	_, err = client.UndeployAgent(agentID)
 	if err != nil {
@@ -384,7 +410,7 @@ func runAgentsUndeploy(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ Agent undeployed successfully!")
+	fmt.Printf("✅ %s undeployed successfully!\n", capitalize(label))
 	fmt.Println("   The webhook URL is no longer active.")
 }
 
@@ -404,7 +430,9 @@ func runAgentsRun(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("▶️  Running agent: %s\n", agentID)
+	label := resolveAgentTypeLabel(client, agentID)
+
+	fmt.Printf("▶️  Running %s: %s\n", label, agentID)
 
 	resp, err := client.RunAgent(agentID, payload)
 	if err != nil {
@@ -413,7 +441,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
-	fmt.Println("✅ Execution started!")
+	fmt.Printf("✅ %s execution started!\n", capitalize(label))
 	fmt.Printf("   Execution ID: %s\n", resp.ExecutionID)
 	fmt.Printf("   Status: %s\n", resp.Status)
 	fmt.Println()
@@ -679,15 +707,101 @@ func formatBoolOverride(val *bool) string {
 }
 
 func formatAgentType(t string) string {
+	return typeLabel(strings.ToUpper(t))
+}
+
+// capitalize uppercases the first letter of a string.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// typeLabel returns the singular lowercase label for a type.
+func typeLabel(t string) string {
 	switch strings.ToUpper(t) {
 	case "SKILL":
 		return "skill"
 	case "COMMAND":
 		return "command"
-	case "AGENT":
-		return "agent"
 	default:
 		return "agent"
+	}
+}
+
+// typeLabelPlural returns the plural lowercase label for a type.
+func typeLabelPlural(t string) string {
+	switch strings.ToUpper(t) {
+	case "SKILL":
+		return "skills"
+	case "COMMAND":
+		return "commands"
+	default:
+		return "agents"
+	}
+}
+
+// typeIcon returns the emoji icon for a type.
+func typeIcon(t string) string {
+	switch strings.ToUpper(t) {
+	case "SKILL":
+		return "⚡"
+	case "COMMAND":
+		return "📎"
+	default:
+		return "🤖"
+	}
+}
+
+// resolveAgentTypeLabel fetches the agent to determine its type label.
+// Falls back to "agent" on error.
+func resolveAgentTypeLabel(client *api.Client, agentID string) string {
+	resp, err := client.GetAgent(agentID)
+	if err != nil {
+		return "agent"
+	}
+	return typeLabel(strings.ToUpper(resp.Agent.Type))
+}
+
+// printAgentsByRepo prints agents grouped by repository.
+func printAgentsByRepo(agents []api.Agent) {
+	byRepo := make(map[string][]api.Agent)
+	var repoOrder []string
+	for _, a := range agents {
+		if _, seen := byRepo[a.Repo.FullName]; !seen {
+			repoOrder = append(repoOrder, a.Repo.FullName)
+		}
+		byRepo[a.Repo.FullName] = append(byRepo[a.Repo.FullName], a)
+	}
+
+	for _, repo := range repoOrder {
+		repoAgents := byRepo[repo]
+		fmt.Printf("📁 %s\n", repo)
+		for _, a := range repoAgents {
+			statusIcon := "⚪"
+			status := "not deployed"
+			if a.IsDeployed {
+				statusIcon = "🟢"
+				status = "deployed"
+			}
+			if a.IsMissing {
+				statusIcon = "🔴"
+				status = "missing"
+			}
+
+			tl := formatAgentType(a.Type)
+			fmt.Printf("  %s %s [%s] (%s)\n", statusIcon, a.AgentName, tl, status)
+			fmt.Printf("    ID: %s\n", a.ID)
+			if a.Description != "" {
+				desc := a.Description
+				if len(desc) > 60 {
+					desc = desc[:57] + "..."
+				}
+				fmt.Printf("    %s\n", desc)
+			}
+		}
+		fmt.Println()
 	}
 }
 
