@@ -17,6 +17,9 @@ Workflow:
   datagen login              Save your DataGen API key
   datagen mcp                Configure DataGen MCP locally
   datagen github connect     Install the GitHub App and connect repos
+  datagen repo list          List available repositories
+  datagen repo add           Connect an existing repository
+  datagen repo create        Create a new repository and connect it
   datagen agents list        List discovered agents
   datagen agents deploy      Deploy an agent as a webhook endpoint
   datagen agents run         Trigger an agent execution
@@ -37,6 +40,7 @@ func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(repoCmd)
 	rootCmd.AddCommand(agentsCmd)
 	rootCmd.AddCommand(secretsCmd)
 }

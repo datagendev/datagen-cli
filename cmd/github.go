@@ -125,8 +125,8 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 		}
 
 		fmt.Println("After updating access on GitHub, run:")
-		fmt.Println("   datagen github repos          -- to see available repos")
-		fmt.Println("   datagen github connect-repo   -- to connect a repo")
+		fmt.Println("   datagen repo list             -- to see available repos")
+		fmt.Println("   datagen repo add <owner/repo> -- to connect a repo")
 		return
 	}
 
@@ -198,7 +198,7 @@ func runGitHubConnect(cmd *cobra.Command, args []string) {
 
 			fmt.Println()
 			fmt.Println("Next steps:")
-			fmt.Println("   1. Run 'datagen github connect-repo <owner/repo>' to connect a repository")
+			fmt.Println("   1. Run 'datagen repo add <owner/repo>' to connect a repository")
 			fmt.Println("   2. Run 'datagen agents list' to see discovered agents")
 			return
 		}
@@ -258,7 +258,7 @@ func runGitHubRepos(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	fmt.Println("Use 'datagen github connect-repo <owner/repo>' to connect a repository.")
+	fmt.Println("Use 'datagen repo add <owner/repo>' to connect a repository.")
 }
 
 func runGitHubConnected(cmd *cobra.Command, args []string) {
@@ -278,7 +278,7 @@ func runGitHubConnected(cmd *cobra.Command, args []string) {
 
 	if len(repos.Repos) == 0 {
 		fmt.Println("\nNo connected repositories.")
-		fmt.Println("Run 'datagen github connect-repo <owner/repo>' to connect one.")
+		fmt.Println("Run 'datagen repo add <owner/repo>' to connect one.")
 		return
 	}
 
