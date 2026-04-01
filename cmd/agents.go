@@ -135,12 +135,12 @@ var agentsOutputCmd = &cobra.Command{
 	Long: `Show the final output/result of an agent execution.
 
 By default, shows the output of the most recent execution.
-Use --execution to specify an execution ID, or --session to look up by SDK session ID.
+Use --execution to specify an execution ID, or --session to look up by session ID.
 
 Examples:
   datagen agents output <agent-id>
   datagen agents output <agent-id> --execution <execution-id>
-  datagen agents output <agent-id> --session <sdk-session-id>
+  datagen agents output <agent-id> --session <session-id>
   datagen agents output <agent-id> --json`,
 	Args: cobra.ExactArgs(1),
 	Run:  runAgentsOutput,
@@ -176,7 +176,7 @@ func init() {
 	agentsLogsCmd.Flags().IntVar(&agentsExecLimit, "limit", 10, "Maximum number of executions to show")
 
 	agentsOutputCmd.Flags().StringVar(&outputExecID, "execution", "", "Execution ID to show output for")
-	agentsOutputCmd.Flags().StringVar(&outputSessionID, "session", "", "SDK session ID to look up")
+	agentsOutputCmd.Flags().StringVar(&outputSessionID, "session", "", "Session ID to look up")
 	agentsOutputCmd.Flags().BoolVar(&outputJSON, "json", false, "Output raw result as JSON")
 
 	agentsConfigCmd.Flags().StringVar(&configSetPrompt, "set-prompt", "", "Set the entry prompt text")
