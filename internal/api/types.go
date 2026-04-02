@@ -193,6 +193,26 @@ type Execution struct {
 	CreatedAt    time.Time              `json:"createdAt"`
 	StartedAt    *time.Time             `json:"startedAt,omitempty"`
 	CompletedAt  *time.Time             `json:"completedAt,omitempty"`
+	SdkSessionID *string                `json:"sdkSessionId,omitempty"`
+	PrUrl        string                 `json:"prUrl,omitempty"`
+	DurationMs   *int                   `json:"durationMs,omitempty"`
+}
+
+type ExecutionOutputResponse struct {
+	ExecutionID  string                 `json:"executionId"`
+	AgentID      string                 `json:"agentId"`
+	AgentName    string                 `json:"agentName"`
+	Type         string                 `json:"type,omitempty"`
+	Status       string                 `json:"status"`
+	SdkSessionID *string                `json:"sdkSessionId,omitempty"`
+	Result       map[string]interface{} `json:"result,omitempty"`
+	ErrorMessage string                 `json:"errorMessage,omitempty"`
+	Payload      map[string]interface{} `json:"payload,omitempty"`
+	PrUrl        string                 `json:"prUrl,omitempty"`
+	AgentBranch  string                 `json:"agentBranch,omitempty"`
+	StartedAt    *time.Time             `json:"startedAt,omitempty"`
+	CompletedAt  *time.Time             `json:"completedAt,omitempty"`
+	DurationMs   *int                   `json:"durationMs,omitempty"`
 }
 
 type ListExecutionsResponse struct {
@@ -259,8 +279,8 @@ type AgentConfigResponse struct {
 	Repo          string                    `json:"repo"`
 	EntryPrompt   *string                   `json:"entryPrompt"`
 	Webhook       *AgentConfigWebhook       `json:"webhook"`
-	Notifications *AgentConfigNotifications  `json:"notifications"`
-	Recipients    []AgentConfigRecipient     `json:"recipients"`
+	Notifications *AgentConfigNotifications `json:"notifications"`
+	Recipients    []AgentConfigRecipient    `json:"recipients"`
 }
 
 type RecipientAdd struct {
@@ -306,6 +326,148 @@ type CreateScheduleRequest struct {
 
 type CreateScheduleResponse struct {
 	Schedule ScheduleInfo `json:"schedule"`
+}
+
+// Custom tool types
+
+type CustomToolSummary struct {
+	DeploymentUUID     string                 `json:"deployment_uuid"`
+	FlowName           string                 `json:"flow_name"`
+	Name               string                 `json:"name,omitempty"`
+	Description        string                 `json:"description"`
+	RequiredInputVars  []string               `json:"required_input_vars,omitempty"`
+	RequiredOutputVars []string               `json:"required_output_vars,omitempty"`
+	FinalCode          *string                `json:"final_code,omitempty"`
+	DefaultInputVars   map[string]interface{} `json:"default_input_vars,omitempty"`
+	CreatedAt          string                 `json:"created_at,omitempty"`
+	UpdatedAt          string                 `json:"updated_at,omitempty"`
+	DeploymentType     *int                   `json:"deployment_type,omitempty"`
+	IsCodePublic       *bool                  `json:"is_code_public,omitempty"`
+	IsOwner            *bool                  `json:"is_owner,omitempty"`
+}
+
+type ListCustomToolsResponse struct {
+	Success bool                `json:"success"`
+	Data    []CustomToolSummary `json:"data"`
+	Total   int                 `json:"total,omitempty"`
+	Page    int                 `json:"page,omitempty"`
+	Size    int                 `json:"size,omitempty"`
+}
+
+type MCPConfigSummary struct {
+	Name       string                 `json:"name"`
+	Config     map[string]interface{} `json:"config,omitempty"`
+	TemplateID string                 `json:"template_id,omitempty"`
+	IsActive   bool                   `json:"is_active,omitempty"`
+}
+
+type CustomToolDetail struct {
+	DeploymentUUID     string                 `json:"deployment_uuid"`
+	FlowName           string                 `json:"flow_name"`
+	Name               string                 `json:"name,omitempty"`
+	Description        string                 `json:"description"`
+	RequiredInputVars  []string               `json:"required_input_vars,omitempty"`
+	RequiredOutputVars []string               `json:"required_output_vars,omitempty"`
+	FinalCode          *string                `json:"final_code,omitempty"`
+	InputSchema        map[string]interface{} `json:"input_schema,omitempty"`
+	OutputSchema       map[string]interface{} `json:"output_schema,omitempty"`
+	DefaultInputVars   map[string]interface{} `json:"default_input_vars,omitempty"`
+	CreatedAt          string                 `json:"created_at,omitempty"`
+	UpdatedAt          string                 `json:"updated_at,omitempty"`
+	ExpectedTools      []string               `json:"expected_tools,omitempty"`
+	AdditionalImports  []string               `json:"additional_imports,omitempty"`
+	RequiredSecrets    []string               `json:"required_secrets,omitempty"`
+	MCPConfigs         []MCPConfigSummary     `json:"mcp_configs,omitempty"`
+	DeploymentType     *int                   `json:"deployment_type,omitempty"`
+	IsCodePublic       *bool                  `json:"is_code_public,omitempty"`
+	IsOwner            *bool                  `json:"is_owner,omitempty"`
+	OwnerDisplayName   string                 `json:"owner_display_name,omitempty"`
+}
+
+type GetCustomToolResponse struct {
+	Success bool             `json:"success"`
+	Data    CustomToolDetail `json:"data"`
+}
+
+type DeployCustomToolRequest struct {
+	Name              string                 `json:"name"`
+	Description       string                 `json:"description,omitempty"`
+	FinalCode         string                 `json:"final_code"`
+	InputSchema       map[string]interface{} `json:"input_schema,omitempty"`
+	OutputVarsList    []string               `json:"output_vars_list,omitempty"`
+	ExpectedTools     []string               `json:"expected_tools,omitempty"`
+	AdditionalImports []string               `json:"additional_imports,omitempty"`
+	DeploymentType    int                    `json:"deployment_type"`
+	DefaultInputVars  map[string]interface{} `json:"default_input_vars,omitempty"`
+	MCPServerNames    []string               `json:"mcp_server_names,omitempty"`
+	MCPToolNames      []string               `json:"mcp_tool_names,omitempty"`
+	RequiredSecrets   []string               `json:"required_secrets,omitempty"`
+}
+
+type DeployCustomToolData struct {
+	DeploymentUUID    string `json:"deployment_uuid"`
+	CodeExecutionUUID string `json:"code_execution_uuid,omitempty"`
+	Name              string `json:"name,omitempty"`
+	Status            string `json:"status,omitempty"`
+	Message           string `json:"message,omitempty"`
+}
+
+type DeployCustomToolResponse struct {
+	Success bool                 `json:"success"`
+	Data    DeployCustomToolData `json:"data"`
+}
+
+type UpdateCustomToolRequest struct {
+	Name              *string                `json:"name,omitempty"`
+	Description       *string                `json:"description,omitempty"`
+	FinalCode         *string                `json:"final_code,omitempty"`
+	InputSchema       map[string]interface{} `json:"input_schema,omitempty"`
+	DefaultInputVars  map[string]interface{} `json:"default_input_vars,omitempty"`
+	AdditionalImports []string               `json:"additional_imports,omitempty"`
+	ExpectedTools     []string               `json:"expected_tools,omitempty"`
+	RequiredSecrets   []string               `json:"required_secrets,omitempty"`
+	DeploymentType    *int                   `json:"deployment_type,omitempty"`
+	MCPServerNames    []string               `json:"mcp_server_names,omitempty"`
+}
+
+type UpdateCustomToolResponse struct {
+	Success bool             `json:"success"`
+	Data    CustomToolDetail `json:"data"`
+}
+
+type ValidateCustomToolMissingRequirements struct {
+	OAuthProviders       []string `json:"oauth_providers,omitempty"`
+	EnvironmentVariables []string `json:"environment_variables,omitempty"`
+	Secrets              []string `json:"secrets,omitempty"`
+}
+
+type ValidateCustomToolResponseData struct {
+	IsValid                bool                                  `json:"is_valid"`
+	MissingRequirements    ValidateCustomToolMissingRequirements `json:"missing_requirements"`
+	ConfiguredRequirements ValidateCustomToolMissingRequirements `json:"configured_requirements"`
+	NextSteps              []string                              `json:"next_steps,omitempty"`
+	Message                string                                `json:"message,omitempty"`
+}
+
+type ValidateCustomToolResponse struct {
+	Success bool                           `json:"success"`
+	Data    ValidateCustomToolResponseData `json:"data"`
+}
+
+type RunCustomToolRequest struct {
+	InputVars map[string]interface{} `json:"input_vars,omitempty"`
+}
+
+type RunCustomToolResponseData struct {
+	RunUUID       string `json:"run_uuid,omitempty"`
+	ExecutionUUID string `json:"execution_uuid,omitempty"`
+	Status        string `json:"status,omitempty"`
+	Message       string `json:"message,omitempty"`
+}
+
+type RunCustomToolResponse struct {
+	Success bool                      `json:"success"`
+	Data    RunCustomToolResponseData `json:"data"`
 }
 
 // Error response
