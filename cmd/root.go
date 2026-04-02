@@ -3,9 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/datagendev/datagen-cli/internal/version"
 	"github.com/spf13/cobra"
 )
+
+var updateMsg <-chan string
 
 var rootCmd = &cobra.Command{
 	Use:   "datagen",
@@ -27,6 +31,25 @@ Workflow:
   datagen agents schedule    Set up cron schedules
   datagen agents config      Configure prompts, secrets, and recipients
   datagen secrets set        Store API keys for agent use`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Skip background check for the explicit version command
+		if cmd.Name() == "version" {
+			return
+		}
+		updateMsg = version.CheckForUpdate()
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		if updateMsg == nil {
+			return
+		}
+		select {
+		case msg := <-updateMsg:
+			if msg != "" {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		case <-time.After(1 * time.Second):
+		}
+	},
 }
 
 // Execute runs the root command
@@ -38,6 +61,8 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.Version = version.Version
+
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(toolsCmd)
@@ -46,4 +71,5 @@ func init() {
 	rootCmd.AddCommand(skillsCmd)
 	rootCmd.AddCommand(commandsCmd)
 	rootCmd.AddCommand(secretsCmd)
+	rootCmd.AddCommand(versionCmd)
 }
