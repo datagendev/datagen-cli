@@ -376,14 +376,21 @@ func runToolsRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if !validateResp.Data.IsValid {
+	// Backend returns is_ready; accept either is_ready or is_valid for compatibility
+	isReady := validateResp.Data.IsReady || validateResp.Data.IsValid
+	if !isReady {
 		fmt.Println()
 		fmt.Println("❌ Custom tool is not ready to run.")
 		if len(validateResp.Data.MissingRequirements.EnvironmentVariables) > 0 {
 			fmt.Printf("   Missing environment variables: %s\n", strings.Join(validateResp.Data.MissingRequirements.EnvironmentVariables, ", "))
 		}
-		if len(validateResp.Data.MissingRequirements.Secrets) > 0 {
-			fmt.Printf("   Missing secrets: %s\n", strings.Join(validateResp.Data.MissingRequirements.Secrets, ", "))
+		// Check both missing_requirements.secrets and top-level missing_secrets
+		missingSecrets := validateResp.Data.MissingRequirements.Secrets
+		if len(missingSecrets) == 0 {
+			missingSecrets = validateResp.Data.MissingSecrets
+		}
+		if len(missingSecrets) > 0 {
+			fmt.Printf("   Missing secrets: %s\n", strings.Join(missingSecrets, ", "))
 			fmt.Println("   Set them with: datagen secrets set KEY=VALUE")
 		}
 		if len(validateResp.Data.MissingRequirements.OAuthProviders) > 0 {

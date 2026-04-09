@@ -443,8 +443,10 @@ type ValidateCustomToolMissingRequirements struct {
 
 type ValidateCustomToolResponseData struct {
 	IsValid                bool                                  `json:"is_valid"`
+	IsReady                bool                                  `json:"is_ready"`
 	MissingRequirements    ValidateCustomToolMissingRequirements `json:"missing_requirements"`
 	ConfiguredRequirements ValidateCustomToolMissingRequirements `json:"configured_requirements"`
+	MissingSecrets         []string                              `json:"missing_secrets,omitempty"`
 	NextSteps              []string                              `json:"next_steps,omitempty"`
 	Message                string                                `json:"message,omitempty"`
 }
