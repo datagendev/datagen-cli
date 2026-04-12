@@ -422,6 +422,47 @@ func (c *Client) ListAgentExecutions(agentID string, limit int) (*ListExecutions
 }
 
 // ==========================================
+// Execution Log Methods
+// ==========================================
+
+// GetExecutionLogs returns detailed logs for a specific execution
+func (c *Client) GetExecutionLogs(executionID string, level string, limit int) (*ExecutionLogsResponse, error) {
+	path := fmt.Sprintf("/api/agent/execution/%s/logs?limit=%d", executionID, limit)
+	if level != "" {
+		path += fmt.Sprintf("&level=%s", level)
+	}
+
+	body, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ExecutionLogsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// GetExecutionTranscript returns the full Claude conversation transcript for an execution
+func (c *Client) GetExecutionTranscript(agentID, executionID string, limit int) (*ExecutionTranscriptResponse, error) {
+	path := fmt.Sprintf("/api/cli/agents/%s/executions/%s/claude-transcript?limit=%d", agentID, executionID, limit)
+
+	body, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ExecutionTranscriptResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// ==========================================
 // Custom Tool Methods
 // ==========================================
 

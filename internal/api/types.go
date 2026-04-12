@@ -472,6 +472,64 @@ type RunCustomToolResponse struct {
 	Data    RunCustomToolResponseData `json:"data"`
 }
 
+// Execution Log types
+
+type ExecutionLog struct {
+	ID        string                 `json:"id"`
+	Timestamp time.Time              `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"message"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type ExecutionLogsPagination struct {
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+type ExecutionLogsExecution struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+type ExecutionLogsResponse struct {
+	Logs       []ExecutionLog          `json:"logs"`
+	Pagination *ExecutionLogsPagination `json:"pagination,omitempty"`
+	Execution  *ExecutionLogsExecution  `json:"execution,omitempty"`
+}
+
+// Execution Transcript types
+
+type TranscriptEntry struct {
+	LineNumber int                    `json:"lineNumber"`
+	Type       *string                `json:"type"`
+	Subtype    *string                `json:"subtype"`
+	Cwd        *string                `json:"cwd"`
+	Raw        map[string]interface{} `json:"raw,omitempty"`
+}
+
+type TranscriptInfo struct {
+	SandboxID   string            `json:"sandboxId,omitempty"`
+	SessionID   string            `json:"sessionId,omitempty"`
+	SessionFile string            `json:"sessionFile,omitempty"`
+	Cwd         string            `json:"cwd,omitempty"`
+	EntryCount  int               `json:"entryCount"`
+	Entries     []TranscriptEntry `json:"entries"`
+}
+
+type TranscriptExecution struct {
+	ID          string     `json:"id"`
+	Status      string     `json:"status"`
+	StartedAt   *time.Time `json:"startedAt,omitempty"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+}
+
+type ExecutionTranscriptResponse struct {
+	Execution  TranscriptExecution `json:"execution"`
+	Transcript TranscriptInfo      `json:"transcript"`
+}
+
 // Error response
 
 type ErrorResponse struct {
