@@ -28,6 +28,12 @@ var (
 	configNotifyFailure   string
 	configNotifyReply     string
 
+	// Logs flags
+	logsExecID    string
+	logsSessionID string
+	logsLevel     string
+	logsTranscript bool
+
 	// Output flags
 	outputExecID    string
 	outputSessionID string
@@ -105,9 +111,20 @@ The agent must be deployed before it can be run.`,
 var agentsLogsCmd = &cobra.Command{
 	Use:   "logs <agent-id>",
 	Short: "View agent execution logs",
-	Long:  `View recent execution history for an agent.`,
-	Args:  cobra.ExactArgs(1),
-	Run:   runAgentsLogs,
+	Long: `View recent execution history for an agent.
+
+By default, lists recent executions as a summary.
+Use --execution or --session to view detailed logs for a specific execution.
+Use --transcript to view the full Claude conversation transcript.
+
+Examples:
+  datagen agents logs <agent-id>
+  datagen agents logs <agent-id> --execution <execution-id>
+  datagen agents logs <agent-id> --session <session-id>
+  datagen agents logs <agent-id> --execution <execution-id> --transcript
+  datagen agents logs <agent-id> --execution <execution-id> --level ERROR`,
+	Args: cobra.ExactArgs(1),
+	Run:  runAgentsLogs,
 }
 
 var agentsScheduleCmd = &cobra.Command{
@@ -173,7 +190,11 @@ func init() {
 
 	agentsRunCmd.Flags().StringVar(&agentsRunPayload, "payload", "{}", "JSON payload to send to the agent")
 
-	agentsLogsCmd.Flags().IntVar(&agentsExecLimit, "limit", 10, "Maximum number of executions to show")
+	agentsLogsCmd.Flags().IntVar(&agentsExecLimit, "limit", 10, "Maximum number of executions (or log entries) to show")
+	agentsLogsCmd.Flags().StringVar(&logsExecID, "execution", "", "Show detailed logs for a specific execution")
+	agentsLogsCmd.Flags().StringVar(&logsSessionID, "session", "", "Show detailed logs by session ID")
+	agentsLogsCmd.Flags().StringVar(&logsLevel, "level", "", "Filter logs by level (INFO, WARNING, ERROR)")
+	agentsLogsCmd.Flags().BoolVar(&logsTranscript, "transcript", false, "Show Claude conversation transcript instead of execution logs")
 
 	agentsOutputCmd.Flags().StringVar(&outputExecID, "execution", "", "Execution ID to show output for")
 	agentsOutputCmd.Flags().StringVar(&outputSessionID, "session", "", "Session ID to look up")
@@ -484,6 +505,27 @@ func runAgentsLogs(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Resolve execution ID from session if needed
+	executionID := logsExecID
+	if logsSessionID != "" && executionID == "" {
+		executionID, err = resolveExecutionFromSession(client, agentID, logsSessionID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// If we have an execution ID, show detailed logs or transcript
+	if executionID != "" {
+		if logsTranscript {
+			runTranscript(client, agentID, executionID)
+		} else {
+			runDetailedLogs(client, executionID)
+		}
+		return
+	}
+
+	// Default: list executions summary
 	fmt.Printf("📜 Fetching execution logs for: %s\n", agentID)
 
 	resp, err := client.ListAgentExecutions(agentID, agentsExecLimit)
@@ -540,6 +582,393 @@ func runAgentsLogs(cmd *cobra.Command, args []string) {
 		}
 
 		fmt.Println()
+	}
+}
+
+// resolveExecutionFromSession looks up the execution ID for a given session ID
+func resolveExecutionFromSession(client *api.Client, agentID, sessionID string) (string, error) {
+	fmt.Printf("🔍 Looking up execution by session: %s\n", sessionID)
+
+	output, err := client.GetAgentExecutionOutputBySession(agentID, sessionID)
+	if err != nil {
+		return "", fmt.Errorf("could not find execution for session %s: %w", sessionID, err)
+	}
+
+	fmt.Printf("   Found execution: %s\n\n", output.ExecutionID)
+	return output.ExecutionID, nil
+}
+
+// runDetailedLogs fetches and displays detailed execution logs
+func runDetailedLogs(client *api.Client, executionID string) {
+	limit := agentsExecLimit
+	if limit <= 10 {
+		limit = 1000 // default to more logs when viewing details
+	}
+
+	fmt.Printf("📜 Fetching detailed logs for execution: %s\n", executionID)
+
+	resp, err := client.GetExecutionLogs(executionID, logsLevel, limit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if resp.Execution != nil {
+		fmt.Printf("   Status: %s %s\n", getExecutionStatusIcon(resp.Execution.Status), resp.Execution.Status)
+	}
+	if resp.Pagination != nil {
+		fmt.Printf("   Showing %d of %d log entries (deduplicated)\n", len(resp.Logs), resp.Pagination.Total)
+	}
+	fmt.Println()
+
+	if len(resp.Logs) == 0 {
+		fmt.Println("No log entries found.")
+		return
+	}
+
+	// Deduplicate logs by message content
+	seen := make(map[string]bool)
+	for _, log := range resp.Logs {
+		key := log.Timestamp.Format("15:04:05") + "|" + log.Message
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		levelTag := formatLogLevel(log.Level)
+		ts := log.Timestamp.Format("15:04:05")
+		msg := formatLogMessage(log.Message)
+
+		if msg != "" {
+			fmt.Printf("[%s] %s %s\n", ts, levelTag, msg)
+		}
+	}
+}
+
+// formatLogMessage cleans up a raw log message:
+// - Parses JSON assistant/tool messages into readable summaries
+// - Strips signatures and binary data
+// - Keeps plain text as-is
+func formatLogMessage(msg string) string {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return ""
+	}
+
+	// Not JSON -- return as plain text
+	if !strings.HasPrefix(msg, "{") {
+		return msg
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(msg), &parsed); err != nil {
+		return msg // not valid JSON, return as-is
+	}
+
+	msgType, _ := parsed["type"].(string)
+	subtype, _ := parsed["subtype"].(string)
+
+	switch msgType {
+	case "system":
+		return formatSystemLog(parsed, subtype)
+	case "assistant":
+		return formatAssistantLog(parsed)
+	case "user":
+		return formatUserLog(parsed)
+	case "result":
+		return formatResultLog(parsed)
+	default:
+		// Unknown type -- show type + compact summary
+		if msgType != "" {
+			return fmt.Sprintf("[%s] %s", msgType, compactJSON(parsed, 200))
+		}
+		return compactJSON(parsed, 200)
+	}
+}
+
+func formatSystemLog(parsed map[string]interface{}, subtype string) string {
+	switch subtype {
+	case "init":
+		sessionID, _ := parsed["session_id"].(string)
+		model, _ := parsed["model"].(string)
+		cwd, _ := parsed["cwd"].(string)
+
+		parts := []string{"[system:init]"}
+		if model != "" {
+			parts = append(parts, "model="+model)
+		}
+		if sessionID != "" {
+			parts = append(parts, "session="+sessionID)
+		}
+		if cwd != "" {
+			// Shorten long paths
+			if idx := strings.LastIndex(cwd, "/"); idx > 30 {
+				cwd = "..." + cwd[idx:]
+			}
+			parts = append(parts, "cwd="+cwd)
+		}
+
+		// Count tools
+		if tools, ok := parsed["tools"].([]interface{}); ok {
+			parts = append(parts, fmt.Sprintf("tools=%d", len(tools)))
+		}
+
+		return strings.Join(parts, " ")
+	default:
+		return fmt.Sprintf("[system:%s] %s", subtype, compactJSON(parsed, 150))
+	}
+}
+
+func formatAssistantLog(parsed map[string]interface{}) string {
+	message, ok := parsed["message"].(map[string]interface{})
+	if !ok {
+		return "[assistant] (no message)"
+	}
+
+	content, ok := message["content"].([]interface{})
+	if !ok {
+		return "[assistant] (no content)"
+	}
+
+	var parts []string
+	for _, block := range content {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		blockType, _ := blockMap["type"].(string)
+		switch blockType {
+		case "thinking":
+			thinking, _ := blockMap["thinking"].(string)
+			if len(thinking) > 150 {
+				thinking = thinking[:147] + "..."
+			}
+			parts = append(parts, fmt.Sprintf("[thinking] %s", thinking))
+		case "text":
+			text, _ := blockMap["text"].(string)
+			if len(text) > 300 {
+				text = text[:297] + "..."
+			}
+			parts = append(parts, text)
+		case "tool_use":
+			name, _ := blockMap["name"].(string)
+			input, _ := blockMap["input"].(map[string]interface{})
+			inputStr := compactJSON(input, 150)
+			parts = append(parts, fmt.Sprintf("[tool_use: %s] %s", name, inputStr))
+		case "tool_result":
+			parts = append(parts, "[tool_result]")
+		case "signature":
+			// Skip signatures entirely
+			continue
+		default:
+			parts = append(parts, fmt.Sprintf("[%s]", blockType))
+		}
+	}
+
+	if len(parts) == 0 {
+		return "" // skip empty (signature-only) messages
+	}
+
+	return "[assistant] " + strings.Join(parts, " | ")
+}
+
+func formatUserLog(parsed map[string]interface{}) string {
+	message, ok := parsed["message"].(map[string]interface{})
+	if !ok {
+		return "[user] (no message)"
+	}
+
+	content := message["content"]
+	text := formatContent(content)
+	if len(text) > 300 {
+		text = text[:297] + "..."
+	}
+	return "[user] " + text
+}
+
+func formatResultLog(parsed map[string]interface{}) string {
+	result, _ := parsed["result"].(string)
+	if len(result) > 300 {
+		result = result[:297] + "..."
+	}
+	if result != "" {
+		return "[result] " + result
+	}
+	return "[result] " + compactJSON(parsed, 200)
+}
+
+// compactJSON returns a compact one-line JSON representation, truncated to maxLen
+func compactJSON(v interface{}, maxLen int) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	s := string(data)
+	if len(s) > maxLen {
+		s = s[:maxLen-3] + "..."
+	}
+	return s
+}
+
+// runTranscript fetches and displays the Claude conversation transcript
+func runTranscript(client *api.Client, agentID, executionID string) {
+	limit := agentsExecLimit
+	if limit <= 10 {
+		limit = 200
+	}
+
+	fmt.Printf("📜 Fetching transcript for execution: %s\n", executionID)
+
+	resp, err := client.GetExecutionTranscript(agentID, executionID, limit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("   Status: %s %s\n", getExecutionStatusIcon(resp.Execution.Status), resp.Execution.Status)
+	if resp.Execution.StartedAt != nil {
+		fmt.Printf("   Started: %s\n", resp.Execution.StartedAt.Format("2006-01-02 15:04:05"))
+	}
+	fmt.Printf("   Session: %s\n", resp.Transcript.SessionID)
+	fmt.Printf("   Entries: %d\n", resp.Transcript.EntryCount)
+	fmt.Println()
+
+	if len(resp.Transcript.Entries) == 0 {
+		fmt.Println("No transcript entries found.")
+		return
+	}
+
+	for _, entry := range resp.Transcript.Entries {
+		entryType := "<unknown>"
+		if entry.Type != nil {
+			entryType = *entry.Type
+		}
+
+		switch entryType {
+		case "user_message", "human":
+			content := extractMessageContent(entry.Raw)
+			fmt.Printf(">>> USER:\n%s\n\n", content)
+
+		case "assistant_message", "assistant":
+			content := extractMessageContent(entry.Raw)
+			if entry.Subtype != nil && *entry.Subtype == "tool_use" {
+				fmt.Printf("<<< ASSISTANT (tool_use):\n%s\n\n", content)
+			} else {
+				fmt.Printf("<<< ASSISTANT:\n%s\n\n", content)
+			}
+
+		case "tool_result":
+			content := extractMessageContent(entry.Raw)
+			// Truncate long tool results
+			if len(content) > 500 {
+				content = content[:497] + "..."
+			}
+			fmt.Printf("    TOOL RESULT:\n%s\n\n", content)
+
+		default:
+			// Show type and a compact representation
+			data, _ := json.MarshalIndent(entry.Raw, "    ", "  ")
+			preview := string(data)
+			if len(preview) > 300 {
+				preview = preview[:297] + "..."
+			}
+			fmt.Printf("--- %s:\n    %s\n\n", entryType, preview)
+		}
+	}
+}
+
+// extractMessageContent pulls readable content from a transcript entry's raw JSON
+func extractMessageContent(raw map[string]interface{}) string {
+	// Try "message" field first (Claude SDK format)
+	if msg, ok := raw["message"]; ok {
+		if msgMap, ok := msg.(map[string]interface{}); ok {
+			if content, ok := msgMap["content"]; ok {
+				return formatContent(content)
+			}
+		}
+	}
+
+	// Try top-level "content"
+	if content, ok := raw["content"]; ok {
+		return formatContent(content)
+	}
+
+	// Try "text"
+	if text, ok := raw["text"]; ok {
+		if s, ok := text.(string); ok {
+			return s
+		}
+	}
+
+	// Fallback: compact JSON
+	data, _ := json.Marshal(raw)
+	s := string(data)
+	if len(s) > 500 {
+		s = s[:497] + "..."
+	}
+	return s
+}
+
+// formatContent handles content that may be a string or array of content blocks
+func formatContent(content interface{}) string {
+	if s, ok := content.(string); ok {
+		return s
+	}
+
+	if arr, ok := content.([]interface{}); ok {
+		var parts []string
+		for _, item := range arr {
+			if block, ok := item.(map[string]interface{}); ok {
+				blockType, _ := block["type"].(string)
+				switch blockType {
+				case "text":
+					if text, ok := block["text"].(string); ok {
+						parts = append(parts, text)
+					}
+				case "tool_use":
+					name, _ := block["name"].(string)
+					input, _ := json.Marshal(block["input"])
+					inputStr := string(input)
+					if len(inputStr) > 200 {
+						inputStr = inputStr[:197] + "..."
+					}
+					parts = append(parts, fmt.Sprintf("[tool_use: %s] %s", name, inputStr))
+				case "tool_result":
+					content, _ := json.Marshal(block["content"])
+					contentStr := string(content)
+					if len(contentStr) > 200 {
+						contentStr = contentStr[:197] + "..."
+					}
+					parts = append(parts, fmt.Sprintf("[tool_result] %s", contentStr))
+				default:
+					data, _ := json.Marshal(block)
+					s := string(data)
+					if len(s) > 200 {
+						s = s[:197] + "..."
+					}
+					parts = append(parts, s)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+
+	data, _ := json.Marshal(content)
+	return string(data)
+}
+
+// formatLogLevel returns a formatted log level tag
+func formatLogLevel(level string) string {
+	switch strings.ToUpper(level) {
+	case "ERROR":
+		return "ERROR"
+	case "WARNING", "WARN":
+		return "WARN "
+	case "DEBUG":
+		return "DEBUG"
+	default:
+		return "INFO "
 	}
 }
 
