@@ -598,6 +598,97 @@ func resolveExecutionFromSession(client *api.Client, agentID, sessionID string) 
 	return output.ExecutionID, nil
 }
 
+// tokenUsage tracks cumulative token usage across an execution
+type tokenUsage struct {
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	Steps                    int
+}
+
+// addFromMessage extracts usage from a parsed assistant message log
+func (t *tokenUsage) addFromMessage(parsed map[string]interface{}) {
+	message, ok := parsed["message"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	usage, ok := message["usage"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	t.InputTokens += intVal(usage, "input_tokens")
+	t.OutputTokens += intVal(usage, "output_tokens")
+	t.CacheCreationInputTokens += intVal(usage, "cache_creation_input_tokens")
+	t.CacheReadInputTokens += intVal(usage, "cache_read_input_tokens")
+	t.Steps++
+}
+
+// formatUsageSuffix returns a compact token count string for a single step
+func formatUsageSuffix(parsed map[string]interface{}) string {
+	message, ok := parsed["message"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	usage, ok := message["usage"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	in := intVal(usage, "input_tokens")
+	out := intVal(usage, "output_tokens")
+	cacheRead := intVal(usage, "cache_read_input_tokens")
+	cacheCreate := intVal(usage, "cache_creation_input_tokens")
+
+	total := in + out + cacheRead + cacheCreate
+	if total == 0 {
+		return ""
+	}
+
+	parts := []string{fmt.Sprintf("in=%s", formatTokenCount(in + cacheRead + cacheCreate))}
+	if cacheRead > 0 {
+		parts = append(parts, fmt.Sprintf("cached=%s", formatTokenCount(cacheRead)))
+	}
+	parts = append(parts, fmt.Sprintf("out=%s", formatTokenCount(out)))
+
+	return " [" + strings.Join(parts, " ") + "]"
+}
+
+func intVal(m map[string]interface{}, key string) int {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	}
+	return 0
+}
+
+func formatTokenCount(n int) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// estimateCost returns estimated USD cost based on Claude Sonnet 4.5 pricing
+// Input: $3/MTok, Output: $15/MTok, Cache read: $0.30/MTok, Cache write: $3.75/MTok
+func (t *tokenUsage) estimateCost() float64 {
+	cost := float64(t.InputTokens) * 3.0 / 1000000
+	cost += float64(t.OutputTokens) * 15.0 / 1000000
+	cost += float64(t.CacheReadInputTokens) * 0.30 / 1000000
+	cost += float64(t.CacheCreationInputTokens) * 3.75 / 1000000
+	return cost
+}
+
 // runDetailedLogs fetches and displays detailed execution logs
 func runDetailedLogs(client *api.Client, executionID string) {
 	limit := agentsExecLimit
@@ -626,8 +717,21 @@ func runDetailedLogs(client *api.Client, executionID string) {
 		return
 	}
 
-	// Deduplicate logs by message content
+	// Deduplicate logs, track per-turn usage from assistant messages, and
+	// look for the "result" event which carries authoritative totals.
 	seen := make(map[string]bool)
+	var resultUsage *resultEventUsage
+	turnNum := 0
+
+	// Per-turn tracking from intermediate assistant events
+	type turnInfo struct {
+		num   int
+		input int // total input (input + cache_read + cache_create)
+		cache int // cache_read portion
+		out   int // output_tokens (partial/streaming)
+	}
+	var turns []turnInfo
+
 	for _, log := range resp.Logs {
 		key := log.Timestamp.Format("15:04:05") + "|" + log.Message
 		if seen[key] {
@@ -637,12 +741,168 @@ func runDetailedLogs(client *api.Client, executionID string) {
 
 		levelTag := formatLogLevel(log.Level)
 		ts := log.Timestamp.Format("15:04:05")
+
+		// Parse JSON events for usage data
+		var turnTag string
+		if strings.HasPrefix(log.Message, "{") {
+			var parsed map[string]interface{}
+			if json.Unmarshal([]byte(log.Message), &parsed) == nil {
+				msgType, _ := parsed["type"].(string)
+
+				// Check for "result" event which has authoritative usage
+				if msgType == "result" {
+					resultUsage = extractResultUsage(parsed)
+				}
+
+				// Track per-turn from assistant streaming events
+				if msgType == "assistant" {
+					step := extractStepUsage(parsed)
+					totalIn := step.InputTokens + step.CacheReadInputTokens + step.CacheCreationInputTokens
+					if totalIn > 0 || step.OutputTokens > 0 {
+						turnNum++
+						turns = append(turns, turnInfo{
+							num:   turnNum,
+							input: totalIn,
+							cache: step.CacheReadInputTokens,
+							out:   step.OutputTokens,
+						})
+						turnTag = formatTurnUsage(turnNum, step)
+					}
+				}
+			}
+		}
+
 		msg := formatLogMessage(log.Message)
 
 		if msg != "" {
-			fmt.Printf("[%s] %s %s\n", ts, levelTag, msg)
+			if turnTag != "" {
+				fmt.Printf("[%s] %s %s %s\n", ts, levelTag, turnTag, msg)
+			} else {
+				fmt.Printf("[%s] %s %s\n", ts, levelTag, msg)
+			}
 		}
 	}
+
+	// Print token usage summary
+	fmt.Println()
+	if resultUsage != nil {
+		// Use authoritative data from the result event
+		fmt.Println("Token Usage Summary (from result event)")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Printf("  Turns:           %d\n", resultUsage.NumTurns)
+		fmt.Printf("  Input tokens:    %s\n", formatTokenCount(resultUsage.InputTokens))
+		fmt.Printf("  Output tokens:   %s\n", formatTokenCount(resultUsage.OutputTokens))
+		fmt.Printf("  Cache read:      %s\n", formatTokenCount(resultUsage.CacheReadInputTokens))
+		fmt.Printf("  Cache write:     %s\n", formatTokenCount(resultUsage.CacheCreationInputTokens))
+		totalTokens := resultUsage.InputTokens + resultUsage.OutputTokens + resultUsage.CacheReadInputTokens + resultUsage.CacheCreationInputTokens
+		fmt.Printf("  Total tokens:    %s\n", formatTokenCount(totalTokens))
+		fmt.Printf("  API duration:    %.1fs\n", float64(resultUsage.DurationApiMs)/1000)
+		if resultUsage.TotalCostUsd > 0 {
+			fmt.Printf("  Cost:            $%.4f\n", resultUsage.TotalCostUsd)
+		}
+
+		// Show per-model breakdown if available
+		for model, mu := range resultUsage.ModelUsage {
+			fmt.Printf("  Model:           %s (in=%s out=%s)\n", model, formatTokenCount(mu.In), formatTokenCount(mu.Out))
+		}
+	} else if len(turns) > 0 {
+		// Fallback: aggregate from streaming events (output tokens are partial)
+		var totalIn, totalOut, totalCache int
+		for _, t := range turns {
+			totalIn += t.input
+			totalOut += t.out
+			totalCache += t.cache
+		}
+		fmt.Println("Token Usage Summary (from streaming events, output tokens may be partial)")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Printf("  Turns:           %d\n", turnNum)
+		fmt.Printf("  Total input:     %s\n", formatTokenCount(totalIn))
+		fmt.Printf("  Total output:    %s (partial - streaming)\n", formatTokenCount(totalOut))
+		fmt.Printf("  Cache read:      %s\n", formatTokenCount(totalCache))
+	}
+}
+
+// resultEventUsage holds authoritative usage from the "result" type event
+type resultEventUsage struct {
+	NumTurns                 int
+	DurationMs               int
+	DurationApiMs            int
+	TotalCostUsd             float64
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+	ModelUsage               map[string]struct{ In, Out int }
+}
+
+func extractResultUsage(parsed map[string]interface{}) *resultEventUsage {
+	r := &resultEventUsage{}
+	r.NumTurns = intVal(parsed, "num_turns")
+	r.DurationMs = intVal(parsed, "duration_ms")
+	r.DurationApiMs = intVal(parsed, "duration_api_ms")
+
+	if cost, ok := parsed["total_cost_usd"].(float64); ok {
+		r.TotalCostUsd = cost
+	}
+
+	if usage, ok := parsed["usage"].(map[string]interface{}); ok {
+		r.InputTokens = intVal(usage, "input_tokens")
+		r.OutputTokens = intVal(usage, "output_tokens")
+		r.CacheCreationInputTokens = intVal(usage, "cache_creation_input_tokens")
+		r.CacheReadInputTokens = intVal(usage, "cache_read_input_tokens")
+	}
+
+	// Per-model breakdown
+	if mu, ok := parsed["modelUsage"].(map[string]interface{}); ok {
+		r.ModelUsage = make(map[string]struct{ In, Out int })
+		for model, v := range mu {
+			if m, ok := v.(map[string]interface{}); ok {
+				r.ModelUsage[model] = struct{ In, Out int }{
+					In:  intVal(m, "inputTokens"),
+					Out: intVal(m, "outputTokens"),
+				}
+			}
+		}
+	}
+
+	return r
+}
+
+// stepUsage holds per-turn token counts
+type stepUsage struct {
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
+}
+
+func extractStepUsage(parsed map[string]interface{}) stepUsage {
+	var s stepUsage
+	message, ok := parsed["message"].(map[string]interface{})
+	if !ok {
+		return s
+	}
+	usage, ok := message["usage"].(map[string]interface{})
+	if !ok {
+		return s
+	}
+	s.InputTokens = intVal(usage, "input_tokens")
+	s.OutputTokens = intVal(usage, "output_tokens")
+	s.CacheCreationInputTokens = intVal(usage, "cache_creation_input_tokens")
+	s.CacheReadInputTokens = intVal(usage, "cache_read_input_tokens")
+	return s
+}
+
+func formatTurnUsage(turn int, s stepUsage) string {
+	totalIn := s.InputTokens + s.CacheReadInputTokens + s.CacheCreationInputTokens
+	parts := []string{fmt.Sprintf("turn %d:", turn)}
+	parts = append(parts, fmt.Sprintf("in=%s", formatTokenCount(totalIn)))
+	if s.CacheReadInputTokens > 0 {
+		pct := float64(s.CacheReadInputTokens) / float64(totalIn) * 100
+		parts = append(parts, fmt.Sprintf("(%.0f%% cached)", pct))
+	}
+	parts = append(parts, fmt.Sprintf("out=%s", formatTokenCount(s.OutputTokens)))
+	return strings.Join(parts, " ")
 }
 
 // formatLogMessage cleans up a raw log message:
